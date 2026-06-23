@@ -275,6 +275,15 @@ static async Task<bool> TryHandleServerCommandAsync(ClientConnection connection,
         return true;
     }
 
+    // /help 명령은 사용할 수 있는 명령 목록을 보여줍니다.
+    if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
+    {
+        // 보낸 사람에게만 명령 목록을 알려줍니다.
+        await SendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /quit");
+        // 명령을 처리했다고 호출자에게 알려줍니다.
+        return true;
+    }
+
     // /users 명령은 현재 접속 중인 클라이언트 이름 목록을 보여줍니다.
     if (message.Text.Equals("/users", StringComparison.OrdinalIgnoreCase))
     {

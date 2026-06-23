@@ -73,6 +73,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 < [notice] Online users (2): alice, bob
 ```
 
+사용 가능한 명령 목록을 보고 싶으면 `/help`를 입력합니다.
+
+```text
+> /help
+< [notice] Commands: /help, /name <nickname>, /users, /quit
+```
+
 명시적으로 나가고 싶으면 `/quit`을 입력합니다.
 
 ```text
