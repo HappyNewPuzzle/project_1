@@ -39,6 +39,13 @@ cd SocketStudy
 dotnet run -- client
 ```
 
+세 번째 터미널에서 다른 클라이언트를 하나 더 실행하면 채팅 broadcast를 확인할 수 있습니다.
+
+```powershell
+cd SocketStudy
+dotnet run -- client 5000 bob
+```
+
 닉네임을 지정하고 싶으면 클라이언트 실행 시 포트 뒤에 이름을 붙입니다.
 
 ```powershell
@@ -94,6 +101,19 @@ dotnet run -- client 6000
 < [notice] 127.0.0.1:53210 joined. Online clients: 2
 ```
 
+## 실습 시나리오
+
+터미널 3개를 열고 아래 순서대로 따라 해봅니다.
+
+1. 서버 실행: `dotnet run -- server 5000`
+2. 첫 번째 클라이언트 실행: `dotnet run -- client 5000 alice`
+3. 두 번째 클라이언트 실행: `dotnet run -- client 5000 bob`
+4. `alice` 터미널에서 `hello` 입력
+5. `bob` 터미널에도 `[chat] alice: hello`가 보이는지 확인
+6. 아무 클라이언트에서 `/users` 입력
+7. 한 클라이언트에서 `/quit` 입력
+8. 서버 터미널에서 `Ctrl+C`로 종료
+
 ## 코드에서 먼저 볼 부분
 
 파일은 역할별로 나눠져 있습니다.
@@ -146,5 +166,6 @@ dotnet run --project ../SocketStudy.ProtocolTests/SocketStudy.ProtocolTests.cspr
 
 ## 다음 학습 단계
 
-1. protocol 오류 케이스 테스트 추가하기
-2. 서버와 클라이언트 host 인자 분리하기
+1. 서버와 클라이언트 로직을 클래스로 더 분리하기
+2. 접속자 이름 중복 방지하기
+3. 채팅방 room 개념 추가하기
