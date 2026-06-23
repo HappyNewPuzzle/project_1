@@ -1,5 +1,5 @@
 // 콘솔 실행 인자를 해석하는 helper입니다.
-static class CommandLineOptions
+public static class CommandLineOptions
 {
     // 사용자가 포트를 따로 지정하지 않았을 때 사용할 기본 TCP 포트입니다.
     public const int DefaultPort = 5000;
@@ -60,8 +60,15 @@ static class CommandLineOptions
         }
 
         // 두 번째 인자가 숫자라면 기존 방식인 client [port] [nickname]으로 해석합니다.
-        if (TryParsePort(args[1], out int parsedPort))
+        if (int.TryParse(args[1], out _))
         {
+            // 숫자처럼 생긴 값은 반드시 올바른 포트 범위 안에 있어야 합니다.
+            if (!TryParsePort(args[1], out int parsedPort))
+            {
+                // 옵션 읽기에 실패했다고 호출자에게 알려줍니다.
+                return false;
+            }
+
             // 포트 번호를 저장합니다.
             port = parsedPort;
             // 세 번째 인자가 있으면 닉네임으로 사용합니다.

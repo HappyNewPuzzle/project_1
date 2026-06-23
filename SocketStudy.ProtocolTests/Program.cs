@@ -9,6 +9,9 @@ await RunProtocolRoundTripTestAsync(MessageType.Chat, "한글 메시지와 emoji
 await RunInvalidMessageTypeTestAsync();
 await RunIncompleteBodyTestAsync();
 await RunTooLargeLengthTestAsync();
+RunServerPortParseTest();
+RunLocalClientOptionParseTest();
+RunRemoteClientOptionParseTest();
 
 Console.WriteLine("All protocol tests passed.");
 
@@ -88,6 +91,44 @@ static async Task RunTooLargeLengthTestAsync()
     await AssertThrowsAsync<IOException>(
         () => MessageProtocol.ReadMessageAsync(pair.ServerStream),
         "Expected oversized message length to throw IOException.");
+}
+
+static void RunServerPortParseTest()
+{
+    bool parsed = CommandLineOptions.TryReadServerPort(["server", "6500"], out int port);
+
+    if (!parsed || port != 6500)
+    {
+        throw new InvalidOperationException($"Expected server port 6500, but received {port}.");
+    }
+}
+
+static void RunLocalClientOptionParseTest()
+{
+    bool parsed = CommandLineOptions.TryReadClientOptions(
+        ["client", "6500", "alice"],
+        out string host,
+        out int port,
+        out string? nickname);
+
+    if (!parsed || host != "127.0.0.1" || port != 6500 || nickname != "alice")
+    {
+        throw new InvalidOperationException("Local client options were not parsed correctly.");
+    }
+}
+
+static void RunRemoteClientOptionParseTest()
+{
+    bool parsed = CommandLineOptions.TryReadClientOptions(
+        ["client", "192.168.0.10", "6500", "bob"],
+        out string host,
+        out int port,
+        out string? nickname);
+
+    if (!parsed || host != "192.168.0.10" || port != 6500 || nickname != "bob")
+    {
+        throw new InvalidOperationException("Remote client options were not parsed correctly.");
+    }
 }
 
 static async Task AssertThrowsAsync<TException>(Func<Task> action, string failureMessage)
