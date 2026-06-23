@@ -324,6 +324,15 @@ static async Task ChangeClientNameAsync(ClientConnection connection, string requ
         return;
     }
 
+    // 이미 다른 클라이언트가 쓰고 있는 닉네임이면 변경하지 않습니다.
+    if (IsClientNameInUse(requestedName, except: connection))
+    {
+        // 보낸 사람에게만 실패 이유를 알려줍니다.
+        await SendToClientAsync(connection, MessageType.Notice, $"Nickname is already in use: {requestedName}");
+        // 메서드를 종료합니다.
+        return;
+    }
+
     // 이전 이름을 공지에 쓰기 위해 보관합니다.
     string oldName = connection.Name;
     // 연결 객체의 이름을 새 닉네임으로 바꿉니다.
@@ -408,6 +417,19 @@ static string[] GetClientNames()
             .Select(client => client.Name)
             .OrderBy(name => name)
             .ToArray();
+    }
+}
+
+// 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 메서드입니다.
+static bool IsClientNameInUse(string name, ClientConnection except)
+{
+    // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // 자기 자신을 제외하고 같은 이름을 쓰는 클라이언트가 있는지 확인합니다.
+        return ServerState.Clients.Any(client =>
+            client != except &&
+            string.Equals(client.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 }
 
