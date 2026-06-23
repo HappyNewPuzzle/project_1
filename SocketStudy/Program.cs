@@ -20,7 +20,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
     // 사용자에게 종료가 시작되었음을 알려줍니다.
     Console.WriteLine();
     // 종료 안내를 콘솔에 출력합니다.
-    Console.WriteLine("[app] Shutdown requested...");
+    AppLogger.Info("[app] Shutdown requested...");
 };
 
 // 실행 인자가 하나도 없으면 서버/클라이언트 중 무엇을 실행할지 알 수 없습니다.
@@ -82,11 +82,11 @@ static async Task RunServerAsync(int port, CancellationToken cancellationToken)
         listener.Start();
 
         // 서버가 어떤 주소와 포트에서 대기 중인지 콘솔에 출력합니다.
-        Console.WriteLine($"[server] Listening on 0.0.0.0:{port}");
+        AppLogger.Info($"[server] Listening on 0.0.0.0:{port}");
         // 실습자가 다음에 실행할 클라이언트 명령을 안내합니다.
-        Console.WriteLine($"[server] Open another terminal and run: dotnet run -- client {port}");
+        AppLogger.Info($"[server] Open another terminal and run: dotnet run -- client {port}");
         // 종료 방법을 안내합니다.
-        Console.WriteLine("[server] Press Ctrl+C to stop the server.");
+        AppLogger.Info("[server] Press Ctrl+C to stop the server.");
 
         // 서버는 종료 요청이 오기 전까지 계속 접속을 기다립니다.
         while (!cancellationToken.IsCancellationRequested)
@@ -101,7 +101,7 @@ static async Task RunServerAsync(int port, CancellationToken cancellationToken)
     catch (OperationCanceledException)
     {
         // 정상 종료 흐름이므로 에러로 취급하지 않습니다.
-        Console.WriteLine("[server] Accept loop stopped.");
+        AppLogger.Info("[server] Accept loop stopped.");
     }
     // 성공/실패와 관계없이 서버 socket을 닫고 접속 중인 클라이언트를 정리합니다.
     finally
@@ -111,7 +111,7 @@ static async Task RunServerAsync(int port, CancellationToken cancellationToken)
         // 현재 접속 중인 모든 클라이언트 연결을 닫습니다.
         CloseAllClients();
         // 서버 종료 완료를 콘솔에 출력합니다.
-        Console.WriteLine("[server] Server stopped.");
+        AppLogger.Info("[server] Server stopped.");
     }
 }
 
@@ -123,7 +123,7 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
     // 클라이언트 이름으로 사용할 문자열을 만듭니다.
     string clientName = remoteEndPoint?.ToString() ?? "unknown-client";
     // 클라이언트가 접속했다는 사실을 서버 콘솔에 출력합니다.
-    Console.WriteLine($"[server] Client connected: {clientName}");
+    AppLogger.Info($"[server] Client connected: {clientName}");
 
     // TcpClient에서 실제 데이터를 읽고 쓰는 NetworkStream을 가져옵니다.
     await using NetworkStream stream = client.GetStream();
@@ -160,7 +160,7 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
             }
 
             // 서버 콘솔에 누가 어떤 채팅 메시지를 보냈는지 기록합니다.
-            Console.WriteLine($"[server] Chat from {connection.Name}: {message.Text}");
+            AppLogger.Info($"[server] Chat from {connection.Name}: {message.Text}");
             // 받은 메시지를 접속 중인 모든 클라이언트에게 채팅 메시지로 보냅니다.
             await BroadcastChatMessageAsync(connection, message.Text);
         }
@@ -169,19 +169,19 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
     catch (IOException ex)
     {
         // 서버가 죽지 않도록 에러 내용을 로그로만 남깁니다.
-        Console.WriteLine($"[server] Connection error: {ex.Message}");
+        AppLogger.Error($"[server] Connection error: {ex.Message}");
     }
     // /quit 명령이나 서버 정리 과정에서 stream이 먼저 닫힐 수 있습니다.
     catch (ObjectDisposedException)
     {
         // 이미 닫힌 연결이므로 정상적인 연결 종료 흐름으로 처리합니다.
-        Console.WriteLine($"[server] Connection closed: {connection.Name}");
+        AppLogger.Info($"[server] Connection closed: {connection.Name}");
     }
     // 서버 종료 요청 때문에 읽기 작업이 취소될 수 있습니다.
     catch (OperationCanceledException)
     {
         // 정상 종료 흐름이므로 에러로 취급하지 않습니다.
-        Console.WriteLine($"[server] Connection canceled: {clientName}");
+        AppLogger.Info($"[server] Connection canceled: {clientName}");
     }
     // 성공/실패와 관계없이 마지막 정리 작업을 수행합니다.
     finally
@@ -193,7 +193,7 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
         // 남아 있는 클라이언트들에게 이 클라이언트가 나갔다는 서버 공지를 보냅니다.
         await BroadcastServerNoticeAsync($"{connection.Name} left. Online clients: {GetClientCount()}");
         // 클라이언트 연결이 종료되었다는 사실을 서버 콘솔에 출력합니다.
-        Console.WriteLine($"[server] Client disconnected: {connection.Name}");
+        AppLogger.Info($"[server] Client disconnected: {connection.Name}");
     }
 }
 
@@ -392,7 +392,7 @@ static async Task ChangeClientNameAsync(ClientConnection connection, string requ
     // 연결 객체의 이름을 새 닉네임으로 바꿉니다.
     connection.Rename(requestedName);
     // 서버 콘솔에 닉네임 변경을 기록합니다.
-    Console.WriteLine($"[server] {oldName} is now {connection.Name}");
+    AppLogger.Info($"[server] {oldName} is now {connection.Name}");
     // 모든 클라이언트에게 닉네임 변경을 공지합니다.
     await BroadcastServerNoticeAsync($"{oldName} is now {connection.Name}");
 }
@@ -432,7 +432,7 @@ static void AddClient(ClientConnection connection)
     }
 
     // 서버 콘솔에 현재 접속자 수를 출력합니다.
-    Console.WriteLine($"[server] Online clients: {GetClientCount()}");
+    AppLogger.Info($"[server] Online clients: {GetClientCount()}");
 }
 
 // 현재 클라이언트를 접속자 목록에서 제거하는 메서드입니다.
@@ -446,7 +446,7 @@ static void RemoveClient(ClientConnection connection)
     }
 
     // 서버 콘솔에 현재 접속자 수를 출력합니다.
-    Console.WriteLine($"[server] Online clients: {GetClientCount()}");
+    AppLogger.Info($"[server] Online clients: {GetClientCount()}");
 }
 
 // 현재 접속자 수를 가져오는 메서드입니다.
@@ -510,13 +510,13 @@ static async Task SendToClientAsync(ClientConnection connection, MessageType typ
     catch (IOException ex)
     {
         // 서버 전체가 멈추지 않도록 전송 실패만 로그로 남깁니다.
-        Console.WriteLine($"[server] Failed to send to {connection.Name}: {ex.Message}");
+        AppLogger.Error($"[server] Failed to send to {connection.Name}: {ex.Message}");
     }
     // writer나 socket이 이미 정리된 경우에는 ObjectDisposedException이 발생할 수 있습니다.
     catch (ObjectDisposedException)
     {
         // 이미 닫힌 연결이므로 별도 복구 없이 로그만 남깁니다.
-        Console.WriteLine($"[server] Failed to send to {connection.Name}: connection closed");
+        AppLogger.Error($"[server] Failed to send to {connection.Name}: connection closed");
     }
 }
 

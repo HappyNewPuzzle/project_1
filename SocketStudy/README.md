@@ -61,6 +61,8 @@ dotnet run -- client 5000 alice
 
 서버는 `Ctrl+C`를 누르면 새 접속 받기를 멈추고 현재 클라이언트 연결을 닫은 뒤 종료합니다.
 
+서버 로그는 콘솔과 실행 파일 기준 `logs/socket-study.log` 파일에 함께 기록됩니다.
+
 포트 번호를 바꾸고 싶으면 `server`와 `client` 뒤에 같은 포트 번호를 붙입니다.
 
 ```powershell
@@ -124,5 +126,5 @@ await MessageProtocol.WriteMessageAsync(stream, MessageType.Chat, message);
 
 ## 다음 학습 단계
 
-1. 서버 로그 파일 남기기
-2. 간단한 테스트 프로젝트 추가하기
+1. 간단한 테스트 프로젝트 추가하기
+2. 메시지 protocol 단위 테스트 작성하기
