@@ -111,17 +111,18 @@ _ = HandleClientAsync(client);
 `NetworkStream`은 소켓으로 주고받는 바이트 흐름입니다. TCP에는 메시지 경계가 없기 때문에 이 프로젝트는 직접 메시지 protocol을 만듭니다.
 
 ```csharp
-await MessageProtocol.WriteMessageAsync(stream, message);
+await MessageProtocol.WriteMessageAsync(stream, MessageType.Chat, message);
 ```
 
 현재 protocol은 아래 순서로 데이터를 보냅니다.
 
-1. 메시지 본문 길이 4바이트
-2. UTF-8로 인코딩한 메시지 본문
+1. 메시지 타입 1바이트
+2. 메시지 본문 길이 4바이트
+3. UTF-8로 인코딩한 메시지 본문
 
-받는 쪽은 먼저 4바이트 길이를 읽고, 그 길이만큼 본문을 다시 읽습니다.
+받는 쪽은 먼저 타입과 길이를 읽고, 그 길이만큼 본문을 다시 읽습니다.
 
 ## 다음 학습 단계
 
-1. 서버 코드 구조 정리하기
-2. 메시지 타입을 분리해서 protocol 확장하기
+1. 서버 로그 파일 남기기
+2. 간단한 테스트 프로젝트 추가하기

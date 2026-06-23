@@ -133,7 +133,7 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
     // 현재 클라이언트를 서버의 접속자 목록에 추가합니다.
     AddClient(connection);
     // 새로 접속한 클라이언트 본인에게 환영 메시지와 현재 접속자 수를 알려줍니다.
-    await SendToClientAsync(connection, $"[notice] Welcome, {clientName}. Online clients: {GetClientCount()}");
+    await SendToClientAsync(connection, MessageType.Notice, $"Welcome, {clientName}. Online clients: {GetClientCount()}");
     // 기존 클라이언트들에게 새 클라이언트가 들어왔다는 서버 공지를 보냅니다.
     await BroadcastServerNoticeAsync($"{clientName} joined. Online clients: {GetClientCount()}", except: connection);
 
@@ -143,8 +143,8 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
         // 클라이언트가 연결을 유지하는 동안 메시지를 계속 읽습니다.
         while (true)
         {
-            // 클라이언트가 보낸 length-prefixed 메시지 하나를 비동기로 읽습니다.
-            string? message = await MessageProtocol.ReadMessageAsync(stream, cancellationToken);
+            // 클라이언트가 보낸 protocol 메시지 하나를 비동기로 읽습니다.
+            NetworkMessage? message = await MessageProtocol.ReadMessageAsync(stream, cancellationToken);
             // null은 상대방이 메시지 시작 전에 연결을 정상 종료했다는 뜻입니다.
             if (message is null)
             {
@@ -160,9 +160,9 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
             }
 
             // 서버 콘솔에 누가 어떤 채팅 메시지를 보냈는지 기록합니다.
-            Console.WriteLine($"[server] Chat from {connection.Name}: {message}");
+            Console.WriteLine($"[server] Chat from {connection.Name}: {message.Text}");
             // 받은 메시지를 접속 중인 모든 클라이언트에게 채팅 메시지로 보냅니다.
-            await BroadcastChatMessageAsync(connection, message);
+            await BroadcastChatMessageAsync(connection, message.Text);
         }
     }
     // 네트워크 입출력 중 연결 끊김 같은 문제가 발생하면 IOException이 날 수 있습니다.
@@ -224,7 +224,7 @@ static async Task RunClientAsync(
     if (!string.IsNullOrWhiteSpace(nickname))
     {
         // 서버가 이해하는 /name 명령 형식으로 닉네임을 전달합니다.
-        await MessageProtocol.WriteMessageAsync(stream, $"/name {nickname}", cancellationToken);
+        await MessageProtocol.WriteMessageAsync(stream, MessageType.Command, $"/name {nickname}", cancellationToken);
     }
 
     // 사용자가 빈 줄을 입력하기 전까지 계속 메시지를 보냅니다.
@@ -242,8 +242,10 @@ static async Task RunClientAsync(
             break;
         }
 
-        // 사용자가 입력한 메시지를 length-prefixed protocol로 서버에 보냅니다.
-        await MessageProtocol.WriteMessageAsync(stream, input, cancellationToken);
+        // slash로 시작하면 명령 메시지로, 아니면 일반 채팅 메시지로 서버에 보냅니다.
+        MessageType type = input.StartsWith('/') ? MessageType.Command : MessageType.Chat;
+        // 사용자가 입력한 메시지를 typed length-prefixed protocol로 서버에 보냅니다.
+        await MessageProtocol.WriteMessageAsync(stream, type, input, cancellationToken);
     }
 
     // 사용자가 종료하면 소켓을 닫아서 receiveTask의 ReadLineAsync도 끝날 수 있게 합니다.
@@ -316,20 +318,20 @@ static string? TryReadNickname(string[] args)
 }
 
 // 서버에서 처리해야 하는 slash command인지 확인하고 처리하는 메서드입니다.
-static async Task<bool> TryHandleServerCommandAsync(ClientConnection connection, string message)
+static async Task<bool> TryHandleServerCommandAsync(ClientConnection connection, NetworkMessage message)
 {
-    // slash로 시작하지 않으면 일반 채팅 메시지입니다.
-    if (!message.StartsWith('/'))
+    // command 타입이 아니고 slash로 시작하지 않으면 일반 채팅 메시지입니다.
+    if (message.Type != MessageType.Command && !message.Text.StartsWith('/'))
     {
         // 명령이 아니라고 호출자에게 알려줍니다.
         return false;
     }
 
     // /name 명령은 클라이언트의 표시 이름을 바꿉니다.
-    if (message.StartsWith("/name ", StringComparison.OrdinalIgnoreCase))
+    if (message.Text.StartsWith("/name ", StringComparison.OrdinalIgnoreCase))
     {
         // 명령 뒤쪽의 닉네임 부분만 잘라냅니다.
-        string requestedName = message["/name ".Length..].Trim();
+        string requestedName = message.Text["/name ".Length..].Trim();
         // 닉네임 변경을 처리합니다.
         await ChangeClientNameAsync(connection, requestedName);
         // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -337,21 +339,21 @@ static async Task<bool> TryHandleServerCommandAsync(ClientConnection connection,
     }
 
     // /users 명령은 현재 접속 중인 클라이언트 이름 목록을 보여줍니다.
-    if (message.Equals("/users", StringComparison.OrdinalIgnoreCase))
+    if (message.Text.Equals("/users", StringComparison.OrdinalIgnoreCase))
     {
         // 현재 접속자 이름 목록을 가져옵니다.
         string[] names = GetClientNames();
         // 접속자 목록을 보낸 사람에게만 알려줍니다.
-        await SendToClientAsync(connection, $"[notice] Online users ({names.Length}): {string.Join(", ", names)}");
+        await SendToClientAsync(connection, MessageType.Notice, $"Online users ({names.Length}): {string.Join(", ", names)}");
         // 명령을 처리했다고 호출자에게 알려줍니다.
         return true;
     }
 
     // /quit 명령은 클라이언트가 서버에 연결 종료 의사를 명확히 전달하는 명령입니다.
-    if (message.Equals("/quit", StringComparison.OrdinalIgnoreCase))
+    if (message.Text.Equals("/quit", StringComparison.OrdinalIgnoreCase))
     {
         // 보낸 사람에게 연결을 종료한다는 안내를 보냅니다.
-        await SendToClientAsync(connection, "[notice] Goodbye.");
+        await SendToClientAsync(connection, MessageType.Notice, "Goodbye.");
         // 소켓을 닫아서 해당 클라이언트 처리 루프가 끝나도록 만듭니다.
         connection.Close();
         // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -359,7 +361,7 @@ static async Task<bool> TryHandleServerCommandAsync(ClientConnection connection,
     }
 
     // 알 수 없는 명령은 보낸 사람에게만 안내합니다.
-    await SendToClientAsync(connection, $"[notice] Unknown command: {message}");
+    await SendToClientAsync(connection, MessageType.Notice, $"Unknown command: {message.Text}");
     // 명령을 처리했다고 호출자에게 알려줍니다.
     return true;
 }
@@ -371,7 +373,7 @@ static async Task ChangeClientNameAsync(ClientConnection connection, string requ
     if (string.IsNullOrWhiteSpace(requestedName))
     {
         // 보낸 사람에게만 실패 이유를 알려줍니다.
-        await SendToClientAsync(connection, "[notice] Nickname cannot be empty.");
+        await SendToClientAsync(connection, MessageType.Notice, "Nickname cannot be empty.");
         // 메서드를 종료합니다.
         return;
     }
@@ -380,7 +382,7 @@ static async Task ChangeClientNameAsync(ClientConnection connection, string requ
     if (requestedName.Length > 20)
     {
         // 보낸 사람에게만 실패 이유를 알려줍니다.
-        await SendToClientAsync(connection, "[notice] Nickname must be 20 characters or fewer.");
+        await SendToClientAsync(connection, MessageType.Notice, "Nickname must be 20 characters or fewer.");
         // 메서드를 종료합니다.
         return;
     }
@@ -409,13 +411,13 @@ static async Task BroadcastChatMessageAsync(ClientConnection sender, string mess
     }
 
     // 클라이언트 화면에 표시할 채팅 메시지 형식을 만듭니다.
-    string chatMessage = $"[chat] {sender.Name}: {message}";
+    string chatMessage = $"{sender.Name}: {message}";
 
     // 복사해 둔 클라이언트 목록을 돌면서 채팅 메시지를 보냅니다.
     foreach (ClientConnection client in clients)
     {
         // 보낸 사람을 포함한 모든 접속자에게 같은 채팅 메시지를 전달합니다.
-        await SendToClientAsync(client, chatMessage);
+        await SendToClientAsync(client, MessageType.Chat, chatMessage);
     }
 }
 
@@ -491,18 +493,18 @@ static async Task BroadcastServerNoticeAsync(string message, ClientConnection? e
     foreach (ClientConnection client in clients)
     {
         // notice prefix를 붙여서 일반 chat 메시지와 구분합니다.
-        await SendToClientAsync(client, $"[notice] {message}");
+        await SendToClientAsync(client, MessageType.Notice, message);
     }
 }
 
 // 클라이언트 한 명에게 메시지를 안전하게 보내는 메서드입니다.
-static async Task SendToClientAsync(ClientConnection connection, string message)
+static async Task SendToClientAsync(ClientConnection connection, MessageType type, string message)
 {
     // 네트워크 전송은 실패할 수 있으므로 예외 처리를 준비합니다.
     try
     {
         // 한 클라이언트에게 여러 작업이 동시에 쓰는 일을 막기 위해 연결 객체의 전송 메서드를 사용합니다.
-        await connection.SendAsync(message);
+        await connection.SendAsync(type, message);
     }
     // 클라이언트 연결이 이미 끊긴 경우에는 IOException이 발생할 수 있습니다.
     catch (IOException ex)
@@ -550,8 +552,8 @@ static async Task ReceiveServerMessagesAsync(NetworkStream stream, CancellationT
         // 서버가 연결을 유지하는 동안 메시지를 계속 읽습니다.
         while (true)
         {
-            // 서버에서 보낸 length-prefixed 메시지 하나를 비동기로 읽습니다.
-            string? message = await MessageProtocol.ReadMessageAsync(stream, cancellationToken);
+            // 서버에서 보낸 typed length-prefixed 메시지 하나를 비동기로 읽습니다.
+            NetworkMessage? message = await MessageProtocol.ReadMessageAsync(stream, cancellationToken);
             // null은 서버가 메시지 시작 전에 연결을 종료했다는 뜻입니다.
             if (message is null)
             {
@@ -562,7 +564,7 @@ static async Task ReceiveServerMessagesAsync(NetworkStream stream, CancellationT
             // 입력 프롬프트와 겹치지 않도록 한 줄 내려서 서버 메시지를 출력합니다.
             Console.WriteLine();
             // 서버에서 받은 메시지를 클라이언트 콘솔에 출력합니다.
-            Console.WriteLine($"< {message}");
+            Console.WriteLine($"< {FormatIncomingMessage(message)}");
             // 사용자가 계속 입력할 수 있게 프롬프트를 다시 보여줍니다.
             Console.Write("> ");
         }
@@ -582,4 +584,21 @@ static async Task ReceiveServerMessagesAsync(NetworkStream stream, CancellationT
     {
         // 정상 종료 흐름이므로 조용히 수신 작업을 끝냅니다.
     }
+}
+
+// 서버에서 받은 typed message를 사람이 읽기 좋은 콘솔 문자열로 바꿉니다.
+static string FormatIncomingMessage(NetworkMessage message)
+{
+    // 메시지 타입에 따라 화면 prefix를 붙입니다.
+    return message.Type switch
+    {
+        // 채팅 메시지는 [chat] prefix로 표시합니다.
+        MessageType.Chat => $"[chat] {message.Text}",
+        // 공지 메시지는 [notice] prefix로 표시합니다.
+        MessageType.Notice => $"[notice] {message.Text}",
+        // 서버가 command를 돌려보내는 일은 보통 없지만 디버깅을 위해 표시 형식을 둡니다.
+        MessageType.Command => $"[command] {message.Text}",
+        // 정의되지 않은 타입은 protocol에서 걸러지지만, 혹시 모르니 fallback을 둡니다.
+        _ => message.Text
+    };
 }

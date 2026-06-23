@@ -27,7 +27,7 @@ sealed class ClientConnection
     }
 
     // 이 클라이언트에게 문자열 한 줄을 보내는 메서드입니다.
-    public async Task SendAsync(string message)
+    public async Task SendAsync(MessageType type, string message)
     {
         // 다른 전송 작업이 끝날 때까지 기다립니다.
         await sendLock.WaitAsync();
@@ -36,7 +36,7 @@ sealed class ClientConnection
         try
         {
             // 클라이언트에게 length-prefixed protocol로 문자열 메시지를 보냅니다.
-            await MessageProtocol.WriteMessageAsync(stream, message);
+            await MessageProtocol.WriteMessageAsync(stream, type, message);
         }
         // 전송이 끝났거나 실패해도 다음 전송이 막히지 않게 lock을 풉니다.
         finally
