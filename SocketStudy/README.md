@@ -40,7 +40,11 @@ dotnet run -- server 6000
 dotnet run -- client 6000
 ```
 
-클라이언트에서 글을 입력하면 서버가 같은 내용을 `echo:` prefix와 함께 돌려줍니다.
+클라이언트에서 글을 입력하면 서버가 모든 클라이언트에게 `[chat]` 메시지로 전달합니다.
+
+```text
+< [chat] 127.0.0.1:53210: hello
+```
 
 클라이언트를 두 개 이상 실행하면 새 클라이언트가 들어오거나 나갈 때 기존 클라이언트에게 `[notice]` 메시지가 전달됩니다.
 
@@ -72,11 +76,10 @@ _ = HandleClientAsync(client);
 `NetworkStream`은 소켓으로 주고받는 바이트 흐름입니다. 여기서는 공부하기 쉽게 문자열 한 줄 단위로 읽고 씁니다.
 
 ```csharp
-await writer.WriteLineAsync($"echo: {message}");
+await writer.WriteLineAsync(message);
 ```
 
 ## 다음 학습 단계
 
-1. 채팅방처럼 클라이언트 메시지를 전체 broadcast 하기
-2. 메시지 길이 기반 protocol 직접 만들기
-3. 연결 종료, 예외 처리, cancellation token 추가하기
+1. 메시지 길이 기반 protocol 직접 만들기
+2. 연결 종료, 예외 처리, cancellation token 추가하기

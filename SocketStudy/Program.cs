@@ -119,10 +119,10 @@ static async Task HandleClientAsync(TcpClient client)
                 break;
             }
 
-            // 서버 콘솔에 받은 메시지를 기록합니다.
-            Console.WriteLine($"[server] Received: {message}");
-            // 받은 메시지 앞에 echo:를 붙여 클라이언트에게 다시 보냅니다.
-            await SendToClientAsync(connection, $"echo: {message}");
+            // 서버 콘솔에 누가 어떤 채팅 메시지를 보냈는지 기록합니다.
+            Console.WriteLine($"[server] Chat from {clientName}: {message}");
+            // 받은 메시지를 접속 중인 모든 클라이언트에게 채팅 메시지로 보냅니다.
+            await BroadcastChatMessageAsync(connection, message);
         }
     }
     // 네트워크 입출력 중 연결 끊김 같은 문제가 발생하면 IOException이 날 수 있습니다.
@@ -169,7 +169,7 @@ static async Task RunClientAsync(string host, int port)
         AutoFlush = true
     };
 
-    // 서버가 보내는 echo와 notice를 사용자의 입력과 별개로 계속 읽는 작업을 시작합니다.
+    // 서버가 보내는 chat과 notice를 사용자의 입력과 별개로 계속 읽는 작업을 시작합니다.
     Task receiveTask = ReceiveServerMessagesAsync(reader);
 
     // 사용자가 빈 줄을 입력하기 전까지 계속 메시지를 보냅니다.
@@ -246,6 +246,30 @@ static bool TryReadPort(string[] args, out int port)
     return true;
 }
 
+// 채팅 메시지를 접속 중인 모든 클라이언트에게 보내는 메서드입니다.
+static async Task BroadcastChatMessageAsync(ClientConnection sender, string message)
+{
+    // lock 안에서 await를 하지 않기 위해 먼저 보낼 대상 목록의 복사본을 만듭니다.
+    ClientConnection[] clients;
+
+    // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // 현재 접속해 있는 모든 클라이언트를 전송 대상으로 복사합니다.
+        clients = ServerState.Clients.ToArray();
+    }
+
+    // 클라이언트 화면에 표시할 채팅 메시지 형식을 만듭니다.
+    string chatMessage = $"[chat] {sender.Name}: {message}";
+
+    // 복사해 둔 클라이언트 목록을 돌면서 채팅 메시지를 보냅니다.
+    foreach (ClientConnection client in clients)
+    {
+        // 보낸 사람을 포함한 모든 접속자에게 같은 채팅 메시지를 전달합니다.
+        await SendToClientAsync(client, chatMessage);
+    }
+}
+
 // 현재 클라이언트를 접속자 목록에 추가하는 메서드입니다.
 static void AddClient(ClientConnection connection)
 {
@@ -303,7 +327,7 @@ static async Task BroadcastServerNoticeAsync(string message, ClientConnection? e
     // 복사해 둔 클라이언트 목록을 돌면서 공지 메시지를 보냅니다.
     foreach (ClientConnection client in clients)
     {
-        // notice prefix를 붙여서 일반 echo 응답과 구분합니다.
+        // notice prefix를 붙여서 일반 chat 메시지와 구분합니다.
         await SendToClientAsync(client, $"[notice] {message}");
     }
 }
