@@ -2,7 +2,7 @@ using System.Net.Sockets;
 using System.Text;
 
 // TCP 바이트 흐름 위에 "메시지"라는 단위를 얹기 위한 protocol helper입니다.
-static class MessageProtocol
+public static class MessageProtocol
 {
     // 메시지 타입 1바이트와 본문 길이 4바이트를 합친 header 크기입니다.
     private const int HeaderSize = 5;

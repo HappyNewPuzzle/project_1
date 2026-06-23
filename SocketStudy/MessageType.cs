@@ -1,5 +1,5 @@
 // 네트워크로 주고받는 메시지의 의미를 나타냅니다.
-enum MessageType : byte
+public enum MessageType : byte
 {
     // 일반 채팅 메시지입니다.
     Chat = 1,

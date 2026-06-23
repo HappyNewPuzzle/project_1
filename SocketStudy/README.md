@@ -124,7 +124,15 @@ await MessageProtocol.WriteMessageAsync(stream, MessageType.Chat, message);
 
 받는 쪽은 먼저 타입과 길이를 읽고, 그 길이만큼 본문을 다시 읽습니다.
 
+## 테스트
+
+protocol round-trip 테스트는 별도 콘솔 프로젝트로 실행합니다.
+
+```powershell
+dotnet run --project ../SocketStudy.ProtocolTests/SocketStudy.ProtocolTests.csproj
+```
+
 ## 다음 학습 단계
 
-1. 간단한 테스트 프로젝트 추가하기
-2. 메시지 protocol 단위 테스트 작성하기
+1. protocol 오류 케이스 테스트 추가하기
+2. 서버와 클라이언트 host 인자 분리하기
