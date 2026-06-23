@@ -33,6 +33,18 @@ cd SocketStudy
 dotnet run -- client
 ```
 
+닉네임을 지정하고 싶으면 클라이언트 실행 시 포트 뒤에 이름을 붙입니다.
+
+```powershell
+dotnet run -- client 5000 alice
+```
+
+접속 후에도 `/name` 명령으로 닉네임을 바꿀 수 있습니다.
+
+```text
+> /name bob
+```
+
 서버는 `Ctrl+C`를 누르면 새 접속 받기를 멈추고 현재 클라이언트 연결을 닫은 뒤 종료합니다.
 
 포트 번호를 바꾸고 싶으면 `server`와 `client` 뒤에 같은 포트 번호를 붙입니다.
@@ -90,5 +102,4 @@ await MessageProtocol.WriteMessageAsync(stream, message);
 
 ## 다음 학습 단계
 
-1. 닉네임 설정하기
-2. `/users`, `/quit` 같은 채팅 명령 추가하기
+1. `/users`, `/quit` 같은 채팅 명령 추가하기

@@ -41,6 +41,9 @@ if (!TryReadPort(args, out int port))
     return;
 }
 
+// 세 번째 실행 인자에 클라이언트 닉네임이 있으면 읽고, 없으면 null을 사용합니다.
+string? nickname = TryReadNickname(args);
+
 // 첫 번째 실행 인자를 소문자로 바꿔서 server/client 명령을 구분합니다.
 switch (args[0].ToLowerInvariant())
 {
@@ -54,7 +57,7 @@ switch (args[0].ToLowerInvariant())
     // 사용자가 client를 입력하면 TCP 클라이언트 모드로 실행합니다.
     case "client":
         // 로컬 PC의 서버 127.0.0.1:{port}에 접속합니다.
-        await RunClientAsync("127.0.0.1", port, appCancellation.Token);
+        await RunClientAsync("127.0.0.1", port, nickname, appCancellation.Token);
         // switch 문을 빠져나갑니다.
         break;
 
@@ -149,8 +152,15 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
                 break;
             }
 
+            // 서버 명령이면 채팅 broadcast 대신 명령을 처리합니다.
+            if (await TryHandleServerCommandAsync(connection, message))
+            {
+                // 명령 처리가 끝났으므로 다음 메시지를 기다립니다.
+                continue;
+            }
+
             // 서버 콘솔에 누가 어떤 채팅 메시지를 보냈는지 기록합니다.
-            Console.WriteLine($"[server] Chat from {clientName}: {message}");
+            Console.WriteLine($"[server] Chat from {connection.Name}: {message}");
             // 받은 메시지를 접속 중인 모든 클라이언트에게 채팅 메시지로 보냅니다.
             await BroadcastChatMessageAsync(connection, message);
         }
@@ -175,14 +185,18 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
         // 클라이언트 소켓을 닫아서 운영체제 리소스를 반납합니다.
         client.Close();
         // 남아 있는 클라이언트들에게 이 클라이언트가 나갔다는 서버 공지를 보냅니다.
-        await BroadcastServerNoticeAsync($"{clientName} left. Online clients: {GetClientCount()}");
+        await BroadcastServerNoticeAsync($"{connection.Name} left. Online clients: {GetClientCount()}");
         // 클라이언트 연결이 종료되었다는 사실을 서버 콘솔에 출력합니다.
-        Console.WriteLine($"[server] Client disconnected: {clientName}");
+        Console.WriteLine($"[server] Client disconnected: {connection.Name}");
     }
 }
 
 // TCP 클라이언트를 실행하는 비동기 메서드입니다.
-static async Task RunClientAsync(string host, int port, CancellationToken cancellationToken)
+static async Task RunClientAsync(
+    string host,
+    int port,
+    string? nickname,
+    CancellationToken cancellationToken)
 {
     // 서버에 접속할 TcpClient 객체를 만듭니다.
     using var client = new TcpClient();
@@ -199,6 +213,13 @@ static async Task RunClientAsync(string host, int port, CancellationToken cancel
 
     // 서버가 보내는 chat과 notice를 사용자의 입력과 별개로 계속 읽는 작업을 시작합니다.
     Task receiveTask = ReceiveServerMessagesAsync(stream, cancellationToken);
+
+    // 실행 인자로 닉네임을 받았다면 접속 직후 서버에 이름 변경 명령을 보냅니다.
+    if (!string.IsNullOrWhiteSpace(nickname))
+    {
+        // 서버가 이해하는 /name 명령 형식으로 닉네임을 전달합니다.
+        await MessageProtocol.WriteMessageAsync(stream, $"/name {nickname}", cancellationToken);
+    }
 
     // 사용자가 빈 줄을 입력하기 전까지 계속 메시지를 보냅니다.
     while (true)
@@ -237,7 +258,7 @@ static void PrintUsage()
     // 서버 실행 명령을 출력합니다.
     Console.WriteLine("  dotnet run -- server [port]");
     // 클라이언트 실행 명령을 출력합니다.
-    Console.WriteLine("  dotnet run -- client [port]");
+    Console.WriteLine("  dotnet run -- client [port] [nickname]");
     // 포트를 생략했을 때 사용할 기본값을 출력합니다.
     Console.WriteLine();
     // 기본 포트 번호를 안내합니다.
@@ -272,6 +293,78 @@ static bool TryReadPort(string[] args, out int port)
     port = parsedPort;
     // 포트 읽기에 성공했다고 호출자에게 알려줍니다.
     return true;
+}
+
+// 실행 인자에서 클라이언트 닉네임을 읽는 메서드입니다.
+static string? TryReadNickname(string[] args)
+{
+    // 세 번째 실행 인자가 없으면 닉네임을 지정하지 않은 것입니다.
+    if (args.Length < 3)
+    {
+        // 닉네임 없음으로 처리합니다.
+        return null;
+    }
+
+    // 앞뒤 공백을 제거한 닉네임을 반환합니다.
+    return args[2].Trim();
+}
+
+// 서버에서 처리해야 하는 slash command인지 확인하고 처리하는 메서드입니다.
+static async Task<bool> TryHandleServerCommandAsync(ClientConnection connection, string message)
+{
+    // slash로 시작하지 않으면 일반 채팅 메시지입니다.
+    if (!message.StartsWith('/'))
+    {
+        // 명령이 아니라고 호출자에게 알려줍니다.
+        return false;
+    }
+
+    // /name 명령은 클라이언트의 표시 이름을 바꿉니다.
+    if (message.StartsWith("/name ", StringComparison.OrdinalIgnoreCase))
+    {
+        // 명령 뒤쪽의 닉네임 부분만 잘라냅니다.
+        string requestedName = message["/name ".Length..].Trim();
+        // 닉네임 변경을 처리합니다.
+        await ChangeClientNameAsync(connection, requestedName);
+        // 명령을 처리했다고 호출자에게 알려줍니다.
+        return true;
+    }
+
+    // 알 수 없는 명령은 보낸 사람에게만 안내합니다.
+    await SendToClientAsync(connection, $"[notice] Unknown command: {message}");
+    // 명령을 처리했다고 호출자에게 알려줍니다.
+    return true;
+}
+
+// 클라이언트 닉네임을 변경하는 메서드입니다.
+static async Task ChangeClientNameAsync(ClientConnection connection, string requestedName)
+{
+    // 닉네임이 비어 있으면 변경하지 않습니다.
+    if (string.IsNullOrWhiteSpace(requestedName))
+    {
+        // 보낸 사람에게만 실패 이유를 알려줍니다.
+        await SendToClientAsync(connection, "[notice] Nickname cannot be empty.");
+        // 메서드를 종료합니다.
+        return;
+    }
+
+    // 너무 긴 닉네임은 화면을 어지럽히므로 20자로 제한합니다.
+    if (requestedName.Length > 20)
+    {
+        // 보낸 사람에게만 실패 이유를 알려줍니다.
+        await SendToClientAsync(connection, "[notice] Nickname must be 20 characters or fewer.");
+        // 메서드를 종료합니다.
+        return;
+    }
+
+    // 이전 이름을 공지에 쓰기 위해 보관합니다.
+    string oldName = connection.Name;
+    // 연결 객체의 이름을 새 닉네임으로 바꿉니다.
+    connection.Rename(requestedName);
+    // 서버 콘솔에 닉네임 변경을 기록합니다.
+    Console.WriteLine($"[server] {oldName} is now {connection.Name}");
+    // 모든 클라이언트에게 닉네임 변경을 공지합니다.
+    await BroadcastServerNoticeAsync($"{oldName} is now {connection.Name}");
 }
 
 // 채팅 메시지를 접속 중인 모든 클라이언트에게 보내는 메서드입니다.
@@ -463,7 +556,7 @@ static class ServerState
 sealed class ClientConnection
 {
     // 클라이언트를 구분하기 위한 이름입니다.
-    public string Name { get; }
+    public string Name { get; private set; }
 
     // 실제 TCP 연결 객체입니다.
     public TcpClient Client { get; }
@@ -510,6 +603,13 @@ sealed class ClientConnection
     {
         // TcpClient를 닫으면 내부 stream도 함께 닫힙니다.
         Client.Close();
+    }
+
+    // 클라이언트 표시 이름을 변경하는 메서드입니다.
+    public void Rename(string name)
+    {
+        // 새 이름을 저장합니다.
+        Name = name;
     }
 }
 
