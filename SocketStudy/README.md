@@ -127,7 +127,8 @@ dotnet run -- client 6000
 
 파일은 역할별로 나눠져 있습니다.
 
-- `Program.cs`: 실행 모드 선택, 서버/클라이언트 루프, 채팅 명령 처리
+- `Program.cs`: 실행 모드 선택과 클라이언트 루프
+- `ChatServer.cs`: 서버 accept loop, 클라이언트 처리, 채팅 명령 처리
 - `ClientConnection.cs`: 클라이언트 한 명의 연결 정보와 전송 lock
 - `ServerState.cs`: 서버 전체의 접속자 목록
 - `MessageProtocol.cs`: 4바이트 길이 + UTF-8 본문 protocol
