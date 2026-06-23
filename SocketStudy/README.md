@@ -33,6 +33,13 @@ cd SocketStudy
 dotnet run -- client
 ```
 
+포트 번호를 바꾸고 싶으면 `server`와 `client` 뒤에 같은 포트 번호를 붙입니다.
+
+```powershell
+dotnet run -- server 6000
+dotnet run -- client 6000
+```
+
 클라이언트에서 글을 입력하면 서버가 같은 내용을 `echo:` prefix와 함께 돌려줍니다.
 
 ## 코드에서 먼저 볼 부분
@@ -64,8 +71,7 @@ await writer.WriteLineAsync($"echo: {message}");
 
 ## 다음 학습 단계
 
-1. 포트 번호를 실행 인자로 받기
-2. 여러 클라이언트에게 서버 공지 보내기
-3. 채팅방처럼 클라이언트 메시지를 전체 broadcast 하기
-4. 메시지 길이 기반 protocol 직접 만들기
-5. 연결 종료, 예외 처리, cancellation token 추가하기
+1. 여러 클라이언트에게 서버 공지 보내기
+2. 채팅방처럼 클라이언트 메시지를 전체 broadcast 하기
+3. 메시지 길이 기반 protocol 직접 만들기
+4. 연결 종료, 예외 처리, cancellation token 추가하기

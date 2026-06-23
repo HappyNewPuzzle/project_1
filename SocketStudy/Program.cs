@@ -17,20 +17,29 @@ if (args.Length == 0)
     return;
 }
 
+// 두 번째 실행 인자에 포트 번호가 있으면 읽고, 없으면 기본 포트를 사용합니다.
+if (!TryReadPort(args, out int port))
+{
+    // 포트 번호가 올바르지 않으면 사용법을 다시 보여줍니다.
+    PrintUsage();
+    // 잘못된 설정으로 서버/클라이언트를 실행하지 않고 종료합니다.
+    return;
+}
+
 // 첫 번째 실행 인자를 소문자로 바꿔서 server/client 명령을 구분합니다.
 switch (args[0].ToLowerInvariant())
 {
     // 사용자가 server를 입력하면 TCP 서버 모드로 실행합니다.
     case "server":
-        // 기본 포트로 서버를 시작하고, 서버 작업이 끝날 때까지 기다립니다.
-        await RunServerAsync(DefaultPort);
+        // 사용자가 지정한 포트 또는 기본 포트로 서버를 시작합니다.
+        await RunServerAsync(port);
         // switch 문을 빠져나갑니다.
         break;
 
     // 사용자가 client를 입력하면 TCP 클라이언트 모드로 실행합니다.
     case "client":
-        // 로컬 PC의 서버 127.0.0.1:5000에 접속합니다.
-        await RunClientAsync("127.0.0.1", DefaultPort);
+        // 로컬 PC의 서버 127.0.0.1:{port}에 접속합니다.
+        await RunClientAsync("127.0.0.1", port);
         // switch 문을 빠져나갑니다.
         break;
 
@@ -53,7 +62,7 @@ static async Task RunServerAsync(int port)
     // 서버가 어떤 주소와 포트에서 대기 중인지 콘솔에 출력합니다.
     Console.WriteLine($"[server] Listening on 0.0.0.0:{port}");
     // 실습자가 다음에 실행할 클라이언트 명령을 안내합니다.
-    Console.WriteLine("[server] Open another terminal and run: dotnet run -- client");
+    Console.WriteLine($"[server] Open another terminal and run: dotnet run -- client {port}");
 
     // 서버는 보통 계속 켜져 있어야 하므로 무한 반복으로 접속을 기다립니다.
     while (true)
@@ -180,7 +189,41 @@ static void PrintUsage()
     // 사용법 섹션 제목을 출력합니다.
     Console.WriteLine("Usage:");
     // 서버 실행 명령을 출력합니다.
-    Console.WriteLine("  dotnet run -- server");
+    Console.WriteLine("  dotnet run -- server [port]");
     // 클라이언트 실행 명령을 출력합니다.
-    Console.WriteLine("  dotnet run -- client");
+    Console.WriteLine("  dotnet run -- client [port]");
+    // 포트를 생략했을 때 사용할 기본값을 출력합니다.
+    Console.WriteLine();
+    // 기본 포트 번호를 안내합니다.
+    Console.WriteLine($"Default port: {DefaultPort}");
+}
+
+// 실행 인자에서 포트 번호를 읽는 메서드입니다.
+static bool TryReadPort(string[] args, out int port)
+{
+    // 먼저 기본 포트를 넣어 두면, 사용자가 포트를 생략한 경우 그대로 사용할 수 있습니다.
+    port = DefaultPort;
+
+    // 두 번째 실행 인자가 없으면 포트를 생략한 것이므로 기본 포트를 사용합니다.
+    if (args.Length < 2)
+    {
+        // 포트 읽기에 성공한 것으로 처리합니다.
+        return true;
+    }
+
+    // 문자열로 들어온 포트 값을 int로 바꿔 봅니다.
+    bool parsed = int.TryParse(args[1], out int parsedPort);
+    // 파싱에 실패했거나 TCP 포트 범위인 1~65535를 벗어나면 잘못된 값입니다.
+    if (!parsed || parsedPort < 1 || parsedPort > 65535)
+    {
+        // 어떤 값이 잘못되었는지 콘솔에 출력합니다.
+        Console.WriteLine($"Invalid port: {args[1]}");
+        // 포트 읽기에 실패했다고 호출자에게 알려줍니다.
+        return false;
+    }
+
+    // 검증을 통과한 포트 값을 실제로 사용할 포트 변수에 넣습니다.
+    port = parsedPort;
+    // 포트 읽기에 성공했다고 호출자에게 알려줍니다.
+    return true;
 }
