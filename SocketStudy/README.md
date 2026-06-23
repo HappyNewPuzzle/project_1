@@ -17,6 +17,12 @@ C# TCP 소켓 서버를 공부하기 위한 가장 작은 실습 프로젝트입
 dotnet --version
 ```
 
+루트 폴더에서는 앱과 테스트 프로젝트를 한 번에 빌드할 수 있습니다.
+
+```powershell
+dotnet build SocketStudy.slnx
+```
+
 ## 실행
 
 첫 번째 터미널에서 서버를 실행합니다.

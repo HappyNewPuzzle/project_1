@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SocketStudy.ProtocolTests/SocketStudy.ProtocolTests.csproj" />
+  <Project Path="SocketStudy/SocketStudy.csproj" />
+</Solution>
