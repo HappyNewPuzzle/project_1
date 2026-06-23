@@ -4,8 +4,11 @@ using System.Net.Sockets;
 await RunProtocolRoundTripTestAsync(MessageType.Chat, "alice: hello");
 await RunProtocolRoundTripTestAsync(MessageType.Notice, "Welcome.");
 await RunProtocolRoundTripTestAsync(MessageType.Command, "/users");
+await RunProtocolRoundTripTestAsync(MessageType.Chat, "");
+await RunProtocolRoundTripTestAsync(MessageType.Chat, "한글 메시지와 emoji 🙂");
 await RunInvalidMessageTypeTestAsync();
 await RunIncompleteBodyTestAsync();
+await RunTooLargeLengthTestAsync();
 
 Console.WriteLine("All protocol tests passed.");
 
@@ -72,6 +75,19 @@ static async Task RunIncompleteBodyTestAsync()
     await AssertThrowsAsync<IOException>(
         () => MessageProtocol.ReadMessageAsync(pair.ServerStream),
         "Expected incomplete body to throw IOException.");
+}
+
+static async Task RunTooLargeLengthTestAsync()
+{
+    await using NetworkPair pair = await NetworkPair.ConnectAsync();
+
+    byte[] tooLargeHeader = [1, 0, 16, 0, 1];
+    await pair.ClientStream.WriteAsync(tooLargeHeader);
+    await pair.ClientStream.FlushAsync();
+
+    await AssertThrowsAsync<IOException>(
+        () => MessageProtocol.ReadMessageAsync(pair.ServerStream),
+        "Expected oversized message length to throw IOException.");
 }
 
 static async Task AssertThrowsAsync<TException>(Func<Task> action, string failureMessage)
