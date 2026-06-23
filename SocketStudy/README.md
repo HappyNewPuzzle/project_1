@@ -33,6 +33,8 @@ cd SocketStudy
 dotnet run -- client
 ```
 
+서버는 `Ctrl+C`를 누르면 새 접속 받기를 멈추고 현재 클라이언트 연결을 닫은 뒤 종료합니다.
+
 포트 번호를 바꾸고 싶으면 `server`와 `client` 뒤에 같은 포트 번호를 붙입니다.
 
 ```powershell
@@ -88,4 +90,5 @@ await MessageProtocol.WriteMessageAsync(stream, message);
 
 ## 다음 학습 단계
 
-1. 연결 종료, 예외 처리, cancellation token 추가하기
+1. 닉네임 설정하기
+2. `/users`, `/quit` 같은 채팅 명령 추가하기

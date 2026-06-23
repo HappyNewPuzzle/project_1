@@ -8,6 +8,21 @@ using System.Text;
 // 사용자가 포트를 따로 지정하지 않았을 때 사용할 기본 TCP 포트입니다.
 const int DefaultPort = 5000;
 
+// Ctrl+C 같은 종료 요청을 프로그램 전체에 전달하기 위한 cancellation token source입니다.
+using var appCancellation = new CancellationTokenSource();
+// 콘솔에서 Ctrl+C를 누르면 프로그램을 즉시 강제 종료하지 않고 token만 취소하도록 이벤트를 등록합니다.
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    // 기본 Ctrl+C 동작인 프로세스 즉시 종료를 막습니다.
+    eventArgs.Cancel = true;
+    // 서버/클라이언트 루프에 종료 요청을 전달합니다.
+    appCancellation.Cancel();
+    // 사용자에게 종료가 시작되었음을 알려줍니다.
+    Console.WriteLine();
+    // 종료 안내를 콘솔에 출력합니다.
+    Console.WriteLine("[app] Shutdown requested...");
+};
+
 // 실행 인자가 하나도 없으면 서버/클라이언트 중 무엇을 실행할지 알 수 없습니다.
 if (args.Length == 0)
 {
@@ -32,14 +47,14 @@ switch (args[0].ToLowerInvariant())
     // 사용자가 server를 입력하면 TCP 서버 모드로 실행합니다.
     case "server":
         // 사용자가 지정한 포트 또는 기본 포트로 서버를 시작합니다.
-        await RunServerAsync(port);
+        await RunServerAsync(port, appCancellation.Token);
         // switch 문을 빠져나갑니다.
         break;
 
     // 사용자가 client를 입력하면 TCP 클라이언트 모드로 실행합니다.
     case "client":
         // 로컬 PC의 서버 127.0.0.1:{port}에 접속합니다.
-        await RunClientAsync("127.0.0.1", port);
+        await RunClientAsync("127.0.0.1", port, appCancellation.Token);
         // switch 문을 빠져나갑니다.
         break;
 
@@ -52,30 +67,53 @@ switch (args[0].ToLowerInvariant())
 }
 
 // TCP 서버를 실행하는 비동기 메서드입니다.
-static async Task RunServerAsync(int port)
+static async Task RunServerAsync(int port, CancellationToken cancellationToken)
 {
     // IPAddress.Any는 이 PC의 모든 네트워크 인터페이스에서 접속을 받겠다는 뜻입니다.
     var listener = new TcpListener(IPAddress.Any, port);
-    // 지정한 포트에서 클라이언트 접속을 받을 준비를 시작합니다.
-    listener.Start();
 
-    // 서버가 어떤 주소와 포트에서 대기 중인지 콘솔에 출력합니다.
-    Console.WriteLine($"[server] Listening on 0.0.0.0:{port}");
-    // 실습자가 다음에 실행할 클라이언트 명령을 안내합니다.
-    Console.WriteLine($"[server] Open another terminal and run: dotnet run -- client {port}");
-
-    // 서버는 보통 계속 켜져 있어야 하므로 무한 반복으로 접속을 기다립니다.
-    while (true)
+    // 서버 종료 시 listener를 반드시 닫기 위해 try/finally를 사용합니다.
+    try
     {
-        // 클라이언트가 접속할 때까지 비동기로 기다렸다가, 접속하면 TcpClient 객체를 받습니다.
-        TcpClient client = await listener.AcceptTcpClientAsync();
-        // 각 클라이언트를 별도 작업으로 처리해서 다음 클라이언트 접속도 계속 받을 수 있게 합니다.
-        _ = HandleClientAsync(client);
+        // 지정한 포트에서 클라이언트 접속을 받을 준비를 시작합니다.
+        listener.Start();
+
+        // 서버가 어떤 주소와 포트에서 대기 중인지 콘솔에 출력합니다.
+        Console.WriteLine($"[server] Listening on 0.0.0.0:{port}");
+        // 실습자가 다음에 실행할 클라이언트 명령을 안내합니다.
+        Console.WriteLine($"[server] Open another terminal and run: dotnet run -- client {port}");
+        // 종료 방법을 안내합니다.
+        Console.WriteLine("[server] Press Ctrl+C to stop the server.");
+
+        // 서버는 종료 요청이 오기 전까지 계속 접속을 기다립니다.
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            // 클라이언트가 접속할 때까지 비동기로 기다렸다가, 접속하면 TcpClient 객체를 받습니다.
+            TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken);
+            // 각 클라이언트를 별도 작업으로 처리해서 다음 클라이언트 접속도 계속 받을 수 있게 합니다.
+            _ = HandleClientAsync(client, cancellationToken);
+        }
+    }
+    // Ctrl+C로 cancellationToken이 취소되면 accept 대기가 OperationCanceledException을 던질 수 있습니다.
+    catch (OperationCanceledException)
+    {
+        // 정상 종료 흐름이므로 에러로 취급하지 않습니다.
+        Console.WriteLine("[server] Accept loop stopped.");
+    }
+    // 성공/실패와 관계없이 서버 socket을 닫고 접속 중인 클라이언트를 정리합니다.
+    finally
+    {
+        // 더 이상 새 접속을 받지 않도록 listener를 닫습니다.
+        listener.Stop();
+        // 현재 접속 중인 모든 클라이언트 연결을 닫습니다.
+        CloseAllClients();
+        // 서버 종료 완료를 콘솔에 출력합니다.
+        Console.WriteLine("[server] Server stopped.");
     }
 }
 
 // 접속한 클라이언트 한 명과 메시지를 주고받는 비동기 메서드입니다.
-static async Task HandleClientAsync(TcpClient client)
+static async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
 {
     // 접속한 클라이언트의 IP와 포트 정보를 로그로 남기기 위해 가져옵니다.
     IPEndPoint? remoteEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
@@ -103,7 +141,7 @@ static async Task HandleClientAsync(TcpClient client)
         while (true)
         {
             // 클라이언트가 보낸 length-prefixed 메시지 하나를 비동기로 읽습니다.
-            string? message = await MessageProtocol.ReadMessageAsync(stream);
+            string? message = await MessageProtocol.ReadMessageAsync(stream, cancellationToken);
             // null은 상대방이 메시지 시작 전에 연결을 정상 종료했다는 뜻입니다.
             if (message is null)
             {
@@ -123,6 +161,12 @@ static async Task HandleClientAsync(TcpClient client)
         // 서버가 죽지 않도록 에러 내용을 로그로만 남깁니다.
         Console.WriteLine($"[server] Connection error: {ex.Message}");
     }
+    // 서버 종료 요청 때문에 읽기 작업이 취소될 수 있습니다.
+    catch (OperationCanceledException)
+    {
+        // 정상 종료 흐름이므로 에러로 취급하지 않습니다.
+        Console.WriteLine($"[server] Connection canceled: {clientName}");
+    }
     // 성공/실패와 관계없이 마지막 정리 작업을 수행합니다.
     finally
     {
@@ -138,7 +182,7 @@ static async Task HandleClientAsync(TcpClient client)
 }
 
 // TCP 클라이언트를 실행하는 비동기 메서드입니다.
-static async Task RunClientAsync(string host, int port)
+static async Task RunClientAsync(string host, int port, CancellationToken cancellationToken)
 {
     // 서버에 접속할 TcpClient 객체를 만듭니다.
     using var client = new TcpClient();
@@ -154,7 +198,7 @@ static async Task RunClientAsync(string host, int port)
     await using NetworkStream stream = client.GetStream();
 
     // 서버가 보내는 chat과 notice를 사용자의 입력과 별개로 계속 읽는 작업을 시작합니다.
-    Task receiveTask = ReceiveServerMessagesAsync(stream);
+    Task receiveTask = ReceiveServerMessagesAsync(stream, cancellationToken);
 
     // 사용자가 빈 줄을 입력하기 전까지 계속 메시지를 보냅니다.
     while (true)
@@ -172,7 +216,7 @@ static async Task RunClientAsync(string host, int port)
         }
 
         // 사용자가 입력한 메시지를 length-prefixed protocol로 서버에 보냅니다.
-        await MessageProtocol.WriteMessageAsync(stream, input);
+        await MessageProtocol.WriteMessageAsync(stream, input, cancellationToken);
     }
 
     // 사용자가 종료하면 소켓을 닫아서 receiveTask의 ReadLineAsync도 끝날 수 있게 합니다.
@@ -339,8 +383,31 @@ static async Task SendToClientAsync(ClientConnection connection, string message)
     }
 }
 
+// 서버가 종료될 때 현재 접속 중인 모든 클라이언트 연결을 닫는 메서드입니다.
+static void CloseAllClients()
+{
+    // lock 안에서 오래 작업하지 않기 위해 먼저 접속자 목록 복사본을 만듭니다.
+    ClientConnection[] clients;
+
+    // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // 현재 접속자 목록을 배열로 복사합니다.
+        clients = ServerState.Clients.ToArray();
+        // 서버 종료 중에는 목록을 비워서 중복 정리를 줄입니다.
+        ServerState.Clients.Clear();
+    }
+
+    // 복사해 둔 클라이언트 목록을 돌면서 연결을 닫습니다.
+    foreach (ClientConnection client in clients)
+    {
+        // 각 클라이언트 소켓을 닫아 pending read/write를 깨웁니다.
+        client.Close();
+    }
+}
+
 // 클라이언트가 서버에서 오는 메시지를 계속 읽는 메서드입니다.
-static async Task ReceiveServerMessagesAsync(NetworkStream stream)
+static async Task ReceiveServerMessagesAsync(NetworkStream stream, CancellationToken cancellationToken)
 {
     // 네트워크 수신은 실패할 수 있으므로 예외 처리를 준비합니다.
     try
@@ -349,7 +416,7 @@ static async Task ReceiveServerMessagesAsync(NetworkStream stream)
         while (true)
         {
             // 서버에서 보낸 length-prefixed 메시지 하나를 비동기로 읽습니다.
-            string? message = await MessageProtocol.ReadMessageAsync(stream);
+            string? message = await MessageProtocol.ReadMessageAsync(stream, cancellationToken);
             // null은 서버가 메시지 시작 전에 연결을 종료했다는 뜻입니다.
             if (message is null)
             {
@@ -374,6 +441,11 @@ static async Task ReceiveServerMessagesAsync(NetworkStream stream)
     catch (ObjectDisposedException)
     {
         // 이미 닫힌 연결이므로 추가 작업 없이 종료합니다.
+    }
+    // Ctrl+C로 클라이언트 수신 작업이 취소될 수 있습니다.
+    catch (OperationCanceledException)
+    {
+        // 정상 종료 흐름이므로 조용히 수신 작업을 끝냅니다.
     }
 }
 
@@ -432,6 +504,13 @@ sealed class ClientConnection
             sendLock.Release();
         }
     }
+
+    // 이 클라이언트의 TCP 연결을 닫는 메서드입니다.
+    public void Close()
+    {
+        // TcpClient를 닫으면 내부 stream도 함께 닫힙니다.
+        Client.Close();
+    }
 }
 
 // TCP 바이트 흐름 위에 "메시지"라는 단위를 얹기 위한 protocol helper입니다.
@@ -443,7 +522,10 @@ static class MessageProtocol
     private const int MaxMessageBytes = 1024 * 1024;
 
     // 문자열 메시지를 "4바이트 길이 + UTF-8 본문" 형식으로 stream에 씁니다.
-    public static async Task WriteMessageAsync(NetworkStream stream, string message)
+    public static async Task WriteMessageAsync(
+        NetworkStream stream,
+        string message,
+        CancellationToken cancellationToken = default)
     {
         // 문자열을 UTF-8 바이트 배열로 변환합니다.
         byte[] body = Encoding.UTF8.GetBytes(message);
@@ -460,20 +542,22 @@ static class MessageProtocol
         WriteInt32BigEndian(header, body.Length);
 
         // 먼저 header를 보냅니다.
-        await stream.WriteAsync(header);
+        await stream.WriteAsync(header, cancellationToken);
         // 그 다음 실제 메시지 본문을 보냅니다.
-        await stream.WriteAsync(body);
+        await stream.WriteAsync(body, cancellationToken);
         // 버퍼에 남은 데이터가 있다면 즉시 네트워크로 밀어냅니다.
-        await stream.FlushAsync();
+        await stream.FlushAsync(cancellationToken);
     }
 
     // stream에서 "4바이트 길이 + UTF-8 본문" 형식의 메시지 하나를 읽습니다.
-    public static async Task<string?> ReadMessageAsync(NetworkStream stream)
+    public static async Task<string?> ReadMessageAsync(
+        NetworkStream stream,
+        CancellationToken cancellationToken = default)
     {
         // 4바이트 header를 담을 배열을 준비합니다.
         byte[] header = new byte[HeaderSize];
         // header를 정확히 4바이트 읽습니다. 시작 전에 연결이 닫히면 null이 돌아옵니다.
-        bool hasHeader = await ReadExactOrEndAsync(stream, header);
+        bool hasHeader = await ReadExactOrEndAsync(stream, header, cancellationToken);
         // header를 읽기 전에 연결이 끝났으면 메시지가 없다는 뜻입니다.
         if (!hasHeader)
         {
@@ -500,7 +584,7 @@ static class MessageProtocol
         // 본문 길이만큼 바이트 배열을 준비합니다.
         byte[] body = new byte[bodyLength];
         // 본문을 정확히 bodyLength 바이트만큼 읽습니다.
-        bool hasBody = await ReadExactOrEndAsync(stream, body);
+        bool hasBody = await ReadExactOrEndAsync(stream, body, cancellationToken);
         // header는 왔는데 body가 중간에 끊기면 protocol이 깨진 상태입니다.
         if (!hasBody)
         {
@@ -513,7 +597,10 @@ static class MessageProtocol
     }
 
     // 요청한 크기만큼 정확히 읽거나, 읽기 시작 전에 연결 종료를 감지합니다.
-    private static async Task<bool> ReadExactOrEndAsync(NetworkStream stream, byte[] buffer)
+    private static async Task<bool> ReadExactOrEndAsync(
+        NetworkStream stream,
+        byte[] buffer,
+        CancellationToken cancellationToken)
     {
         // 지금까지 읽은 바이트 수입니다.
         int totalRead = 0;
@@ -522,7 +609,9 @@ static class MessageProtocol
         while (totalRead < buffer.Length)
         {
             // 아직 채워야 하는 구간을 stream에서 읽습니다.
-            int read = await stream.ReadAsync(buffer.AsMemory(totalRead, buffer.Length - totalRead));
+            int read = await stream.ReadAsync(
+                buffer.AsMemory(totalRead, buffer.Length - totalRead),
+                cancellationToken);
             // read가 0이면 상대방이 연결을 닫았다는 뜻입니다.
             if (read == 0)
             {
