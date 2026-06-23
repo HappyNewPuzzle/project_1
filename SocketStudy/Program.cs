@@ -86,17 +86,9 @@ static async Task HandleClientAsync(TcpClient client)
 
     // TcpClient에서 실제 데이터를 읽고 쓰는 NetworkStream을 가져옵니다.
     await using NetworkStream stream = client.GetStream();
-    // stream에서 UTF-8 문자열을 한 줄씩 읽기 위한 reader입니다.
-    using var reader = new StreamReader(stream, Encoding.UTF8);
-    // stream에 UTF-8 문자열을 한 줄씩 쓰기 위한 writer입니다.
-    await using var writer = new StreamWriter(stream, Encoding.UTF8)
-    {
-        // WriteLineAsync를 호출할 때마다 버퍼를 바로 비워서 상대방에게 즉시 전송합니다.
-        AutoFlush = true
-    };
 
     // 서버가 접속자 목록에서 관리할 클라이언트 연결 정보를 만듭니다.
-    var connection = new ClientConnection(clientName, client, writer);
+    var connection = new ClientConnection(clientName, client, stream);
     // 현재 클라이언트를 서버의 접속자 목록에 추가합니다.
     AddClient(connection);
     // 새로 접속한 클라이언트 본인에게 환영 메시지와 현재 접속자 수를 알려줍니다.
@@ -110,9 +102,9 @@ static async Task HandleClientAsync(TcpClient client)
         // 클라이언트가 연결을 유지하는 동안 메시지를 계속 읽습니다.
         while (true)
         {
-            // 클라이언트가 보낸 문자열 한 줄을 비동기로 읽습니다.
-            string? message = await reader.ReadLineAsync();
-            // null은 상대방이 연결을 종료했거나 더 이상 읽을 데이터가 없다는 뜻입니다.
+            // 클라이언트가 보낸 length-prefixed 메시지 하나를 비동기로 읽습니다.
+            string? message = await MessageProtocol.ReadMessageAsync(stream);
+            // null은 상대방이 메시지 시작 전에 연결을 정상 종료했다는 뜻입니다.
             if (message is null)
             {
                 // 메시지 읽기 반복을 종료합니다.
@@ -160,17 +152,9 @@ static async Task RunClientAsync(string host, int port)
 
     // TcpClient에서 실제 데이터를 읽고 쓰는 NetworkStream을 가져옵니다.
     await using NetworkStream stream = client.GetStream();
-    // 서버 응답을 UTF-8 문자열 한 줄 단위로 읽기 위한 reader입니다.
-    using var reader = new StreamReader(stream, Encoding.UTF8);
-    // 서버로 UTF-8 문자열 한 줄을 보내기 위한 writer입니다.
-    await using var writer = new StreamWriter(stream, Encoding.UTF8)
-    {
-        // 사용자가 입력한 메시지를 즉시 서버로 보내기 위해 자동 flush를 켭니다.
-        AutoFlush = true
-    };
 
     // 서버가 보내는 chat과 notice를 사용자의 입력과 별개로 계속 읽는 작업을 시작합니다.
-    Task receiveTask = ReceiveServerMessagesAsync(reader);
+    Task receiveTask = ReceiveServerMessagesAsync(stream);
 
     // 사용자가 빈 줄을 입력하기 전까지 계속 메시지를 보냅니다.
     while (true)
@@ -187,8 +171,8 @@ static async Task RunClientAsync(string host, int port)
             break;
         }
 
-        // 사용자가 입력한 메시지를 서버로 보냅니다.
-        await writer.WriteLineAsync(input);
+        // 사용자가 입력한 메시지를 length-prefixed protocol로 서버에 보냅니다.
+        await MessageProtocol.WriteMessageAsync(stream, input);
     }
 
     // 사용자가 종료하면 소켓을 닫아서 receiveTask의 ReadLineAsync도 끝날 수 있게 합니다.
@@ -356,7 +340,7 @@ static async Task SendToClientAsync(ClientConnection connection, string message)
 }
 
 // 클라이언트가 서버에서 오는 메시지를 계속 읽는 메서드입니다.
-static async Task ReceiveServerMessagesAsync(StreamReader reader)
+static async Task ReceiveServerMessagesAsync(NetworkStream stream)
 {
     // 네트워크 수신은 실패할 수 있으므로 예외 처리를 준비합니다.
     try
@@ -364,9 +348,9 @@ static async Task ReceiveServerMessagesAsync(StreamReader reader)
         // 서버가 연결을 유지하는 동안 메시지를 계속 읽습니다.
         while (true)
         {
-            // 서버에서 보낸 문자열 한 줄을 비동기로 읽습니다.
-            string? message = await reader.ReadLineAsync();
-            // null은 서버 연결이 종료되었다는 뜻입니다.
+            // 서버에서 보낸 length-prefixed 메시지 하나를 비동기로 읽습니다.
+            string? message = await MessageProtocol.ReadMessageAsync(stream);
+            // null은 서버가 메시지 시작 전에 연결을 종료했다는 뜻입니다.
             if (message is null)
             {
                 // 메시지 읽기 반복을 종료합니다.
@@ -412,21 +396,21 @@ sealed class ClientConnection
     // 실제 TCP 연결 객체입니다.
     public TcpClient Client { get; }
 
-    // 클라이언트에게 문자열을 보내기 위한 writer입니다.
-    private readonly StreamWriter writer;
+    // 클라이언트에게 바이트를 보내기 위한 network stream입니다.
+    private readonly NetworkStream stream;
 
     // 같은 클라이언트에게 동시에 여러 메시지를 쓰지 않도록 막는 비동기 lock입니다.
     private readonly SemaphoreSlim sendLock = new(1, 1);
 
     // 클라이언트 연결 정보를 초기화합니다.
-    public ClientConnection(string name, TcpClient client, StreamWriter writer)
+    public ClientConnection(string name, TcpClient client, NetworkStream stream)
     {
         // 클라이언트 이름을 저장합니다.
         Name = name;
         // TCP 연결 객체를 저장합니다.
         Client = client;
-        // 메시지 전송용 writer를 저장합니다.
-        this.writer = writer;
+        // 메시지 전송용 stream을 저장합니다.
+        this.stream = stream;
     }
 
     // 이 클라이언트에게 문자열 한 줄을 보내는 메서드입니다.
@@ -438,8 +422,8 @@ sealed class ClientConnection
         // lock을 잡은 뒤에는 반드시 finally에서 풀어야 합니다.
         try
         {
-            // 클라이언트에게 문자열 한 줄을 보냅니다.
-            await writer.WriteLineAsync(message);
+            // 클라이언트에게 length-prefixed protocol로 문자열 메시지를 보냅니다.
+            await MessageProtocol.WriteMessageAsync(stream, message);
         }
         // 전송이 끝났거나 실패해도 다음 전송이 막히지 않게 lock을 풉니다.
         finally
@@ -447,5 +431,140 @@ sealed class ClientConnection
             // 비동기 lock을 해제합니다.
             sendLock.Release();
         }
+    }
+}
+
+// TCP 바이트 흐름 위에 "메시지"라는 단위를 얹기 위한 protocol helper입니다.
+static class MessageProtocol
+{
+    // 메시지 길이를 담는 header 크기입니다. int 하나를 4바이트 big-endian으로 보냅니다.
+    private const int HeaderSize = 4;
+    // 한 번에 받을 수 있는 메시지 본문의 최대 크기입니다. 너무 큰 메시지로 서버가 메모리를 많이 쓰는 일을 막습니다.
+    private const int MaxMessageBytes = 1024 * 1024;
+
+    // 문자열 메시지를 "4바이트 길이 + UTF-8 본문" 형식으로 stream에 씁니다.
+    public static async Task WriteMessageAsync(NetworkStream stream, string message)
+    {
+        // 문자열을 UTF-8 바이트 배열로 변환합니다.
+        byte[] body = Encoding.UTF8.GetBytes(message);
+        // 본문이 너무 크면 protocol 위반으로 보고 보내지 않습니다.
+        if (body.Length > MaxMessageBytes)
+        {
+            // 호출자가 문제를 알 수 있도록 예외를 발생시킵니다.
+            throw new InvalidOperationException($"Message is too large: {body.Length} bytes");
+        }
+
+        // 4바이트 header 배열을 준비합니다.
+        byte[] header = new byte[HeaderSize];
+        // 메시지 본문 길이를 네트워크 바이트 순서(big-endian)로 header에 기록합니다.
+        WriteInt32BigEndian(header, body.Length);
+
+        // 먼저 header를 보냅니다.
+        await stream.WriteAsync(header);
+        // 그 다음 실제 메시지 본문을 보냅니다.
+        await stream.WriteAsync(body);
+        // 버퍼에 남은 데이터가 있다면 즉시 네트워크로 밀어냅니다.
+        await stream.FlushAsync();
+    }
+
+    // stream에서 "4바이트 길이 + UTF-8 본문" 형식의 메시지 하나를 읽습니다.
+    public static async Task<string?> ReadMessageAsync(NetworkStream stream)
+    {
+        // 4바이트 header를 담을 배열을 준비합니다.
+        byte[] header = new byte[HeaderSize];
+        // header를 정확히 4바이트 읽습니다. 시작 전에 연결이 닫히면 null이 돌아옵니다.
+        bool hasHeader = await ReadExactOrEndAsync(stream, header);
+        // header를 읽기 전에 연결이 끝났으면 메시지가 없다는 뜻입니다.
+        if (!hasHeader)
+        {
+            // 호출자에게 정상 연결 종료를 알립니다.
+            return null;
+        }
+
+        // header의 4바이트를 int 길이 값으로 바꿉니다.
+        int bodyLength = ReadInt32BigEndian(header);
+        // 길이가 음수거나 너무 크면 잘못된 protocol 데이터입니다.
+        if (bodyLength < 0 || bodyLength > MaxMessageBytes)
+        {
+            // 잘못된 길이를 받은 연결은 더 읽지 않고 예외로 처리합니다.
+            throw new IOException($"Invalid message length: {bodyLength}");
+        }
+
+        // 길이가 0인 메시지는 빈 문자열로 처리합니다.
+        if (bodyLength == 0)
+        {
+            // 빈 메시지를 반환합니다.
+            return string.Empty;
+        }
+
+        // 본문 길이만큼 바이트 배열을 준비합니다.
+        byte[] body = new byte[bodyLength];
+        // 본문을 정확히 bodyLength 바이트만큼 읽습니다.
+        bool hasBody = await ReadExactOrEndAsync(stream, body);
+        // header는 왔는데 body가 중간에 끊기면 protocol이 깨진 상태입니다.
+        if (!hasBody)
+        {
+            // 연결이 중간에 끊겼다는 예외를 발생시킵니다.
+            throw new IOException("Connection closed before message body was fully received.");
+        }
+
+        // UTF-8 바이트를 문자열로 변환해 호출자에게 반환합니다.
+        return Encoding.UTF8.GetString(body);
+    }
+
+    // 요청한 크기만큼 정확히 읽거나, 읽기 시작 전에 연결 종료를 감지합니다.
+    private static async Task<bool> ReadExactOrEndAsync(NetworkStream stream, byte[] buffer)
+    {
+        // 지금까지 읽은 바이트 수입니다.
+        int totalRead = 0;
+
+        // buffer 전체가 채워질 때까지 반복합니다.
+        while (totalRead < buffer.Length)
+        {
+            // 아직 채워야 하는 구간을 stream에서 읽습니다.
+            int read = await stream.ReadAsync(buffer.AsMemory(totalRead, buffer.Length - totalRead));
+            // read가 0이면 상대방이 연결을 닫았다는 뜻입니다.
+            if (read == 0)
+            {
+                // 한 바이트도 못 읽은 상태라면 정상적인 연결 종료로 볼 수 있습니다.
+                if (totalRead == 0)
+                {
+                    // 호출자에게 데이터 없이 종료되었다고 알려줍니다.
+                    return false;
+                }
+
+                // 일부만 읽고 끊긴 것은 메시지가 깨진 상황입니다.
+                throw new IOException("Connection closed before the message was fully received.");
+            }
+
+            // 이번에 읽은 바이트 수를 누적합니다.
+            totalRead += read;
+        }
+
+        // 요청한 바이트 수를 모두 읽었습니다.
+        return true;
+    }
+
+    // int 값을 4바이트 big-endian 배열에 씁니다.
+    private static void WriteInt32BigEndian(byte[] buffer, int value)
+    {
+        // 가장 높은 8비트를 첫 번째 바이트에 씁니다.
+        buffer[0] = (byte)(value >> 24);
+        // 다음 8비트를 두 번째 바이트에 씁니다.
+        buffer[1] = (byte)(value >> 16);
+        // 다음 8비트를 세 번째 바이트에 씁니다.
+        buffer[2] = (byte)(value >> 8);
+        // 가장 낮은 8비트를 네 번째 바이트에 씁니다.
+        buffer[3] = (byte)value;
+    }
+
+    // 4바이트 big-endian 배열에서 int 값을 읽습니다.
+    private static int ReadInt32BigEndian(byte[] buffer)
+    {
+        // 각 바이트를 int로 올린 뒤 자리수에 맞게 shift해서 합칩니다.
+        return (buffer[0] << 24)
+            | (buffer[1] << 16)
+            | (buffer[2] << 8)
+            | buffer[3];
     }
 }

@@ -73,13 +73,19 @@ TcpClient client = await listener.AcceptTcpClientAsync();
 _ = HandleClientAsync(client);
 ```
 
-`NetworkStream`은 소켓으로 주고받는 바이트 흐름입니다. 여기서는 공부하기 쉽게 문자열 한 줄 단위로 읽고 씁니다.
+`NetworkStream`은 소켓으로 주고받는 바이트 흐름입니다. TCP에는 메시지 경계가 없기 때문에 이 프로젝트는 직접 메시지 protocol을 만듭니다.
 
 ```csharp
-await writer.WriteLineAsync(message);
+await MessageProtocol.WriteMessageAsync(stream, message);
 ```
+
+현재 protocol은 아래 순서로 데이터를 보냅니다.
+
+1. 메시지 본문 길이 4바이트
+2. UTF-8로 인코딩한 메시지 본문
+
+받는 쪽은 먼저 4바이트 길이를 읽고, 그 길이만큼 본문을 다시 읽습니다.
 
 ## 다음 학습 단계
 
-1. 메시지 길이 기반 protocol 직접 만들기
-2. 연결 종료, 예외 처리, cancellation token 추가하기
+1. 연결 종료, 예외 처리, cancellation token 추가하기
