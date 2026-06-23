@@ -171,6 +171,12 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken cancella
         // 서버가 죽지 않도록 에러 내용을 로그로만 남깁니다.
         Console.WriteLine($"[server] Connection error: {ex.Message}");
     }
+    // /quit 명령이나 서버 정리 과정에서 stream이 먼저 닫힐 수 있습니다.
+    catch (ObjectDisposedException)
+    {
+        // 이미 닫힌 연결이므로 정상적인 연결 종료 흐름으로 처리합니다.
+        Console.WriteLine($"[server] Connection closed: {connection.Name}");
+    }
     // 서버 종료 요청 때문에 읽기 작업이 취소될 수 있습니다.
     catch (OperationCanceledException)
     {
@@ -330,6 +336,28 @@ static async Task<bool> TryHandleServerCommandAsync(ClientConnection connection,
         return true;
     }
 
+    // /users 명령은 현재 접속 중인 클라이언트 이름 목록을 보여줍니다.
+    if (message.Equals("/users", StringComparison.OrdinalIgnoreCase))
+    {
+        // 현재 접속자 이름 목록을 가져옵니다.
+        string[] names = GetClientNames();
+        // 접속자 목록을 보낸 사람에게만 알려줍니다.
+        await SendToClientAsync(connection, $"[notice] Online users ({names.Length}): {string.Join(", ", names)}");
+        // 명령을 처리했다고 호출자에게 알려줍니다.
+        return true;
+    }
+
+    // /quit 명령은 클라이언트가 서버에 연결 종료 의사를 명확히 전달하는 명령입니다.
+    if (message.Equals("/quit", StringComparison.OrdinalIgnoreCase))
+    {
+        // 보낸 사람에게 연결을 종료한다는 안내를 보냅니다.
+        await SendToClientAsync(connection, "[notice] Goodbye.");
+        // 소켓을 닫아서 해당 클라이언트 처리 루프가 끝나도록 만듭니다.
+        connection.Close();
+        // 명령을 처리했다고 호출자에게 알려줍니다.
+        return true;
+    }
+
     // 알 수 없는 명령은 보낸 사람에게만 안내합니다.
     await SendToClientAsync(connection, $"[notice] Unknown command: {message}");
     // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -427,6 +455,20 @@ static int GetClientCount()
     {
         // 현재 접속자 목록의 개수를 반환합니다.
         return ServerState.Clients.Count;
+    }
+}
+
+// 현재 접속자 이름 목록을 가져오는 메서드입니다.
+static string[] GetClientNames()
+{
+    // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // 현재 접속자 이름만 배열로 복사해서 반환합니다.
+        return ServerState.Clients
+            .Select(client => client.Name)
+            .OrderBy(name => name)
+            .ToArray();
     }
 }
 

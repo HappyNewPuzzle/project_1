@@ -45,6 +45,20 @@ dotnet run -- client 5000 alice
 > /name bob
 ```
 
+현재 접속자 목록을 보고 싶으면 `/users`를 입력합니다.
+
+```text
+> /users
+< [notice] Online users (2): alice, bob
+```
+
+명시적으로 나가고 싶으면 `/quit`을 입력합니다.
+
+```text
+> /quit
+< [notice] Goodbye.
+```
+
 서버는 `Ctrl+C`를 누르면 새 접속 받기를 멈추고 현재 클라이언트 연결을 닫은 뒤 종료합니다.
 
 포트 번호를 바꾸고 싶으면 `server`와 `client` 뒤에 같은 포트 번호를 붙입니다.
@@ -102,4 +116,5 @@ await MessageProtocol.WriteMessageAsync(stream, message);
 
 ## 다음 학습 단계
 
-1. `/users`, `/quit` 같은 채팅 명령 추가하기
+1. 서버 코드 구조 정리하기
+2. 메시지 타입을 분리해서 protocol 확장하기
