@@ -79,8 +79,10 @@ static async Task HandleClientAsync(TcpClient client)
 {
     // 접속한 클라이언트의 IP와 포트 정보를 로그로 남기기 위해 가져옵니다.
     IPEndPoint? remoteEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
+    // 클라이언트 이름으로 사용할 문자열을 만듭니다.
+    string clientName = remoteEndPoint?.ToString() ?? "unknown-client";
     // 클라이언트가 접속했다는 사실을 서버 콘솔에 출력합니다.
-    Console.WriteLine($"[server] Client connected: {remoteEndPoint}");
+    Console.WriteLine($"[server] Client connected: {clientName}");
 
     // TcpClient에서 실제 데이터를 읽고 쓰는 NetworkStream을 가져옵니다.
     await using NetworkStream stream = client.GetStream();
@@ -92,6 +94,15 @@ static async Task HandleClientAsync(TcpClient client)
         // WriteLineAsync를 호출할 때마다 버퍼를 바로 비워서 상대방에게 즉시 전송합니다.
         AutoFlush = true
     };
+
+    // 서버가 접속자 목록에서 관리할 클라이언트 연결 정보를 만듭니다.
+    var connection = new ClientConnection(clientName, client, writer);
+    // 현재 클라이언트를 서버의 접속자 목록에 추가합니다.
+    AddClient(connection);
+    // 새로 접속한 클라이언트 본인에게 환영 메시지와 현재 접속자 수를 알려줍니다.
+    await SendToClientAsync(connection, $"[notice] Welcome, {clientName}. Online clients: {GetClientCount()}");
+    // 기존 클라이언트들에게 새 클라이언트가 들어왔다는 서버 공지를 보냅니다.
+    await BroadcastServerNoticeAsync($"{clientName} joined. Online clients: {GetClientCount()}", except: connection);
 
     // 네트워크 연결은 중간에 끊길 수 있으므로 예외 처리를 준비합니다.
     try
@@ -111,7 +122,7 @@ static async Task HandleClientAsync(TcpClient client)
             // 서버 콘솔에 받은 메시지를 기록합니다.
             Console.WriteLine($"[server] Received: {message}");
             // 받은 메시지 앞에 echo:를 붙여 클라이언트에게 다시 보냅니다.
-            await writer.WriteLineAsync($"echo: {message}");
+            await SendToClientAsync(connection, $"echo: {message}");
         }
     }
     // 네트워크 입출력 중 연결 끊김 같은 문제가 발생하면 IOException이 날 수 있습니다.
@@ -123,10 +134,14 @@ static async Task HandleClientAsync(TcpClient client)
     // 성공/실패와 관계없이 마지막 정리 작업을 수행합니다.
     finally
     {
+        // 현재 클라이언트를 서버의 접속자 목록에서 제거합니다.
+        RemoveClient(connection);
         // 클라이언트 소켓을 닫아서 운영체제 리소스를 반납합니다.
         client.Close();
+        // 남아 있는 클라이언트들에게 이 클라이언트가 나갔다는 서버 공지를 보냅니다.
+        await BroadcastServerNoticeAsync($"{clientName} left. Online clients: {GetClientCount()}");
         // 클라이언트 연결이 종료되었다는 사실을 서버 콘솔에 출력합니다.
-        Console.WriteLine($"[server] Client disconnected: {remoteEndPoint}");
+        Console.WriteLine($"[server] Client disconnected: {clientName}");
     }
 }
 
@@ -154,6 +169,9 @@ static async Task RunClientAsync(string host, int port)
         AutoFlush = true
     };
 
+    // 서버가 보내는 echo와 notice를 사용자의 입력과 별개로 계속 읽는 작업을 시작합니다.
+    Task receiveTask = ReceiveServerMessagesAsync(reader);
+
     // 사용자가 빈 줄을 입력하기 전까지 계속 메시지를 보냅니다.
     while (true)
     {
@@ -171,12 +189,12 @@ static async Task RunClientAsync(string host, int port)
 
         // 사용자가 입력한 메시지를 서버로 보냅니다.
         await writer.WriteLineAsync(input);
-
-        // 서버가 돌려준 응답 한 줄을 기다립니다.
-        string? response = await reader.ReadLineAsync();
-        // 서버 응답을 클라이언트 콘솔에 출력합니다.
-        Console.WriteLine($"< {response}");
     }
+
+    // 사용자가 종료하면 소켓을 닫아서 receiveTask의 ReadLineAsync도 끝날 수 있게 합니다.
+    client.Close();
+    // 백그라운드 수신 작업이 정리될 때까지 기다립니다.
+    await receiveTask;
 }
 
 // 잘못 실행했을 때 보여줄 사용법 출력 메서드입니다.
@@ -226,4 +244,184 @@ static bool TryReadPort(string[] args, out int port)
     port = parsedPort;
     // 포트 읽기에 성공했다고 호출자에게 알려줍니다.
     return true;
+}
+
+// 현재 클라이언트를 접속자 목록에 추가하는 메서드입니다.
+static void AddClient(ClientConnection connection)
+{
+    // 여러 클라이언트 작업이 동시에 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // 접속자 목록에 새 연결을 추가합니다.
+        ServerState.Clients.Add(connection);
+    }
+
+    // 서버 콘솔에 현재 접속자 수를 출력합니다.
+    Console.WriteLine($"[server] Online clients: {GetClientCount()}");
+}
+
+// 현재 클라이언트를 접속자 목록에서 제거하는 메서드입니다.
+static void RemoveClient(ClientConnection connection)
+{
+    // 여러 클라이언트 작업이 동시에 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // 접속자 목록에서 연결을 제거합니다.
+        ServerState.Clients.Remove(connection);
+    }
+
+    // 서버 콘솔에 현재 접속자 수를 출력합니다.
+    Console.WriteLine($"[server] Online clients: {GetClientCount()}");
+}
+
+// 현재 접속자 수를 가져오는 메서드입니다.
+static int GetClientCount()
+{
+    // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // 현재 접속자 목록의 개수를 반환합니다.
+        return ServerState.Clients.Count;
+    }
+}
+
+// 서버 공지를 여러 클라이언트에게 보내는 메서드입니다.
+static async Task BroadcastServerNoticeAsync(string message, ClientConnection? except = null)
+{
+    // lock 안에서 await를 하지 않기 위해 먼저 보낼 대상 목록의 복사본을 만듭니다.
+    ClientConnection[] clients;
+
+    // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+    lock (ServerState.Gate)
+    {
+        // except로 전달된 클라이언트는 공지 대상에서 제외합니다.
+        clients = ServerState.Clients
+            .Where(client => client != except)
+            .ToArray();
+    }
+
+    // 복사해 둔 클라이언트 목록을 돌면서 공지 메시지를 보냅니다.
+    foreach (ClientConnection client in clients)
+    {
+        // notice prefix를 붙여서 일반 echo 응답과 구분합니다.
+        await SendToClientAsync(client, $"[notice] {message}");
+    }
+}
+
+// 클라이언트 한 명에게 메시지를 안전하게 보내는 메서드입니다.
+static async Task SendToClientAsync(ClientConnection connection, string message)
+{
+    // 네트워크 전송은 실패할 수 있으므로 예외 처리를 준비합니다.
+    try
+    {
+        // 한 클라이언트에게 여러 작업이 동시에 쓰는 일을 막기 위해 연결 객체의 전송 메서드를 사용합니다.
+        await connection.SendAsync(message);
+    }
+    // 클라이언트 연결이 이미 끊긴 경우에는 IOException이 발생할 수 있습니다.
+    catch (IOException ex)
+    {
+        // 서버 전체가 멈추지 않도록 전송 실패만 로그로 남깁니다.
+        Console.WriteLine($"[server] Failed to send to {connection.Name}: {ex.Message}");
+    }
+    // writer나 socket이 이미 정리된 경우에는 ObjectDisposedException이 발생할 수 있습니다.
+    catch (ObjectDisposedException)
+    {
+        // 이미 닫힌 연결이므로 별도 복구 없이 로그만 남깁니다.
+        Console.WriteLine($"[server] Failed to send to {connection.Name}: connection closed");
+    }
+}
+
+// 클라이언트가 서버에서 오는 메시지를 계속 읽는 메서드입니다.
+static async Task ReceiveServerMessagesAsync(StreamReader reader)
+{
+    // 네트워크 수신은 실패할 수 있으므로 예외 처리를 준비합니다.
+    try
+    {
+        // 서버가 연결을 유지하는 동안 메시지를 계속 읽습니다.
+        while (true)
+        {
+            // 서버에서 보낸 문자열 한 줄을 비동기로 읽습니다.
+            string? message = await reader.ReadLineAsync();
+            // null은 서버 연결이 종료되었다는 뜻입니다.
+            if (message is null)
+            {
+                // 메시지 읽기 반복을 종료합니다.
+                break;
+            }
+
+            // 입력 프롬프트와 겹치지 않도록 한 줄 내려서 서버 메시지를 출력합니다.
+            Console.WriteLine();
+            // 서버에서 받은 메시지를 클라이언트 콘솔에 출력합니다.
+            Console.WriteLine($"< {message}");
+            // 사용자가 계속 입력할 수 있게 프롬프트를 다시 보여줍니다.
+            Console.Write("> ");
+        }
+    }
+    // 클라이언트가 직접 종료하면서 소켓을 닫으면 IOException이 발생할 수 있습니다.
+    catch (IOException)
+    {
+        // 사용자가 종료한 상황에서는 조용히 수신 작업을 끝냅니다.
+    }
+    // stream이 이미 정리된 경우에도 수신 작업을 조용히 끝냅니다.
+    catch (ObjectDisposedException)
+    {
+        // 이미 닫힌 연결이므로 추가 작업 없이 종료합니다.
+    }
+}
+
+// 서버 전체에서 공유하는 접속자 목록과 lock 객체를 담는 클래스입니다.
+static class ServerState
+{
+    // 접속자 목록을 동시에 읽고 쓸 때 보호하기 위한 lock 객체입니다.
+    public static readonly object Gate = new();
+
+    // 현재 서버에 접속해 있는 클라이언트 목록입니다.
+    public static readonly List<ClientConnection> Clients = new();
+}
+
+// 서버가 클라이언트 한 명을 관리하기 위해 들고 있는 연결 정보입니다.
+sealed class ClientConnection
+{
+    // 클라이언트를 구분하기 위한 이름입니다.
+    public string Name { get; }
+
+    // 실제 TCP 연결 객체입니다.
+    public TcpClient Client { get; }
+
+    // 클라이언트에게 문자열을 보내기 위한 writer입니다.
+    private readonly StreamWriter writer;
+
+    // 같은 클라이언트에게 동시에 여러 메시지를 쓰지 않도록 막는 비동기 lock입니다.
+    private readonly SemaphoreSlim sendLock = new(1, 1);
+
+    // 클라이언트 연결 정보를 초기화합니다.
+    public ClientConnection(string name, TcpClient client, StreamWriter writer)
+    {
+        // 클라이언트 이름을 저장합니다.
+        Name = name;
+        // TCP 연결 객체를 저장합니다.
+        Client = client;
+        // 메시지 전송용 writer를 저장합니다.
+        this.writer = writer;
+    }
+
+    // 이 클라이언트에게 문자열 한 줄을 보내는 메서드입니다.
+    public async Task SendAsync(string message)
+    {
+        // 다른 전송 작업이 끝날 때까지 기다립니다.
+        await sendLock.WaitAsync();
+
+        // lock을 잡은 뒤에는 반드시 finally에서 풀어야 합니다.
+        try
+        {
+            // 클라이언트에게 문자열 한 줄을 보냅니다.
+            await writer.WriteLineAsync(message);
+        }
+        // 전송이 끝났거나 실패해도 다음 전송이 막히지 않게 lock을 풉니다.
+        finally
+        {
+            // 비동기 lock을 해제합니다.
+            sendLock.Release();
+        }
+    }
 }
