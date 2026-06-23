@@ -32,32 +32,38 @@ if (args.Length == 0)
     return;
 }
 
-// 두 번째 실행 인자에 포트 번호가 있으면 읽고, 없으면 기본 포트를 사용합니다.
-if (!TryReadPort(args, out int port))
-{
-    // 포트 번호가 올바르지 않으면 사용법을 다시 보여줍니다.
-    PrintUsage();
-    // 잘못된 설정으로 서버/클라이언트를 실행하지 않고 종료합니다.
-    return;
-}
-
-// 세 번째 실행 인자에 클라이언트 닉네임이 있으면 읽고, 없으면 null을 사용합니다.
-string? nickname = TryReadNickname(args);
-
 // 첫 번째 실행 인자를 소문자로 바꿔서 server/client 명령을 구분합니다.
 switch (args[0].ToLowerInvariant())
 {
     // 사용자가 server를 입력하면 TCP 서버 모드로 실행합니다.
     case "server":
+        // server 모드의 실행 인자에서 포트 번호를 읽습니다.
+        if (!TryReadServerPort(args, out int serverPort))
+        {
+            // 포트 번호가 올바르지 않으면 사용법을 다시 보여줍니다.
+            PrintUsage();
+            // 잘못된 설정으로 서버를 실행하지 않고 종료합니다.
+            return;
+        }
+
         // 사용자가 지정한 포트 또는 기본 포트로 서버를 시작합니다.
-        await RunServerAsync(port, appCancellation.Token);
+        await RunServerAsync(serverPort, appCancellation.Token);
         // switch 문을 빠져나갑니다.
         break;
 
     // 사용자가 client를 입력하면 TCP 클라이언트 모드로 실행합니다.
     case "client":
-        // 로컬 PC의 서버 127.0.0.1:{port}에 접속합니다.
-        await RunClientAsync("127.0.0.1", port, nickname, appCancellation.Token);
+        // client 모드의 실행 인자에서 host, port, nickname을 읽습니다.
+        if (!TryReadClientOptions(args, out string host, out int clientPort, out string? nickname))
+        {
+            // 실행 인자가 올바르지 않으면 사용법을 다시 보여줍니다.
+            PrintUsage();
+            // 잘못된 설정으로 클라이언트를 실행하지 않고 종료합니다.
+            return;
+        }
+
+        // 지정한 서버 host:port에 접속합니다.
+        await RunClientAsync(host, clientPort, nickname, appCancellation.Token);
         // switch 문을 빠져나갑니다.
         break;
 
@@ -267,14 +273,16 @@ static void PrintUsage()
     Console.WriteLine("  dotnet run -- server [port]");
     // 클라이언트 실행 명령을 출력합니다.
     Console.WriteLine("  dotnet run -- client [port] [nickname]");
+    // 원격 서버 접속 명령을 출력합니다.
+    Console.WriteLine("  dotnet run -- client [host] [port] [nickname]");
     // 포트를 생략했을 때 사용할 기본값을 출력합니다.
     Console.WriteLine();
     // 기본 포트 번호를 안내합니다.
     Console.WriteLine($"Default port: {DefaultPort}");
 }
 
-// 실행 인자에서 포트 번호를 읽는 메서드입니다.
-static bool TryReadPort(string[] args, out int port)
+// server 모드 실행 인자에서 포트 번호를 읽는 메서드입니다.
+static bool TryReadServerPort(string[] args, out int port)
 {
     // 먼저 기본 포트를 넣어 두면, 사용자가 포트를 생략한 경우 그대로 사용할 수 있습니다.
     port = DefaultPort;
@@ -286,13 +294,84 @@ static bool TryReadPort(string[] args, out int port)
         return true;
     }
 
+    // 두 번째 실행 인자를 포트 번호로 해석합니다.
+    return TryParsePort(args[1], out port);
+}
+
+// client 모드 실행 인자에서 host, port, nickname을 읽는 메서드입니다.
+static bool TryReadClientOptions(string[] args, out string host, out int port, out string? nickname)
+{
+    // 기본 host는 같은 PC를 의미하는 127.0.0.1입니다.
+    host = "127.0.0.1";
+    // 기본 포트를 먼저 넣어 둡니다.
+    port = DefaultPort;
+    // 기본 닉네임은 없습니다.
+    nickname = null;
+
+    // client만 입력했다면 모든 기본값을 사용합니다.
+    if (args.Length == 1)
+    {
+        // 옵션 읽기에 성공한 것으로 처리합니다.
+        return true;
+    }
+
+    // 두 번째 인자가 숫자라면 기존 방식인 client [port] [nickname]으로 해석합니다.
+    if (TryParsePort(args[1], out int parsedPort))
+    {
+        // 포트 번호를 저장합니다.
+        port = parsedPort;
+        // 세 번째 인자가 있으면 닉네임으로 사용합니다.
+        nickname = args.Length >= 3 ? args[2].Trim() : null;
+        // 옵션 읽기에 성공한 것으로 처리합니다.
+        return true;
+    }
+
+    // 두 번째 인자가 숫자가 아니라면 client [host] [port] [nickname] 형식으로 해석합니다.
+    host = args[1].Trim();
+    // host가 비어 있으면 잘못된 값입니다.
+    if (string.IsNullOrWhiteSpace(host))
+    {
+        // 어떤 값이 잘못되었는지 콘솔에 출력합니다.
+        Console.WriteLine("Invalid host.");
+        // 옵션 읽기에 실패했다고 호출자에게 알려줍니다.
+        return false;
+    }
+
+    // host를 직접 지정한 경우 세 번째 인자에는 포트가 와야 합니다.
+    if (args.Length < 3)
+    {
+        // 어떤 값이 빠졌는지 콘솔에 출력합니다.
+        Console.WriteLine("Missing port.");
+        // 옵션 읽기에 실패했다고 호출자에게 알려줍니다.
+        return false;
+    }
+
+    // 세 번째 인자를 포트로 해석합니다.
+    if (!TryParsePort(args[2], out port))
+    {
+        // 포트 읽기에 실패했다고 호출자에게 알려줍니다.
+        return false;
+    }
+
+    // 네 번째 인자가 있으면 닉네임으로 사용합니다.
+    nickname = args.Length >= 4 ? args[3].Trim() : null;
+    // 옵션 읽기에 성공한 것으로 처리합니다.
+    return true;
+}
+
+// 문자열 포트 값을 검증하고 int로 변환하는 메서드입니다.
+static bool TryParsePort(string value, out int port)
+{
+    // 기본값을 넣어 둡니다.
+    port = DefaultPort;
+
     // 문자열로 들어온 포트 값을 int로 바꿔 봅니다.
-    bool parsed = int.TryParse(args[1], out int parsedPort);
+    bool parsed = int.TryParse(value, out int parsedPort);
     // 파싱에 실패했거나 TCP 포트 범위인 1~65535를 벗어나면 잘못된 값입니다.
     if (!parsed || parsedPort < 1 || parsedPort > 65535)
     {
         // 어떤 값이 잘못되었는지 콘솔에 출력합니다.
-        Console.WriteLine($"Invalid port: {args[1]}");
+        Console.WriteLine($"Invalid port: {value}");
         // 포트 읽기에 실패했다고 호출자에게 알려줍니다.
         return false;
     }
@@ -301,20 +380,6 @@ static bool TryReadPort(string[] args, out int port)
     port = parsedPort;
     // 포트 읽기에 성공했다고 호출자에게 알려줍니다.
     return true;
-}
-
-// 실행 인자에서 클라이언트 닉네임을 읽는 메서드입니다.
-static string? TryReadNickname(string[] args)
-{
-    // 세 번째 실행 인자가 없으면 닉네임을 지정하지 않은 것입니다.
-    if (args.Length < 3)
-    {
-        // 닉네임 없음으로 처리합니다.
-        return null;
-    }
-
-    // 앞뒤 공백을 제거한 닉네임을 반환합니다.
-    return args[2].Trim();
 }
 
 // 서버에서 처리해야 하는 slash command인지 확인하고 처리하는 메서드입니다.

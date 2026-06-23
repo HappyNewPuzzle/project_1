@@ -39,6 +39,12 @@ dotnet run -- client
 dotnet run -- client 5000 alice
 ```
 
+다른 PC의 서버에 접속하려면 host, port, nickname 순서로 입력합니다.
+
+```powershell
+dotnet run -- client 192.168.0.10 5000 alice
+```
+
 접속 후에도 `/name` 명령으로 닉네임을 바꿀 수 있습니다.
 
 ```text
