@@ -4,6 +4,9 @@ public static class CommandLineOptions
     // 사용자가 포트를 따로 지정하지 않았을 때 사용할 기본 TCP 포트입니다.
     public const int DefaultPort = 5000;
 
+    // 실행 인자로 받은 닉네임에 허용할 문자 집합입니다.
+    private const string AllowedNicknameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
+
     // 잘못 실행했을 때 보여줄 사용법 출력 메서드입니다.
     public static void PrintUsage()
     {
@@ -73,6 +76,12 @@ public static class CommandLineOptions
             port = parsedPort;
             // 세 번째 인자가 있으면 닉네임으로 사용합니다.
             nickname = args.Length >= 3 ? args[2].Trim() : null;
+            // 닉네임 실행 인자를 검증합니다.
+            if (!IsValidNicknameOption(nickname))
+            {
+                // 옵션 읽기에 실패했다고 호출자에게 알려줍니다.
+                return false;
+            }
             // 옵션 읽기에 성공한 것으로 처리합니다.
             return true;
         }
@@ -106,7 +115,45 @@ public static class CommandLineOptions
 
         // 네 번째 인자가 있으면 닉네임으로 사용합니다.
         nickname = args.Length >= 4 ? args[3].Trim() : null;
+        // 닉네임 실행 인자를 검증합니다.
+        if (!IsValidNicknameOption(nickname))
+        {
+            // 옵션 읽기에 실패했다고 호출자에게 알려줍니다.
+            return false;
+        }
         // 옵션 읽기에 성공한 것으로 처리합니다.
+        return true;
+    }
+
+    // 실행 인자로 전달된 닉네임이 서버 규칙과 맞는지 확인합니다.
+    private static bool IsValidNicknameOption(string? nickname)
+    {
+        // 닉네임을 생략한 경우는 허용합니다.
+        if (string.IsNullOrWhiteSpace(nickname))
+        {
+            // 검증 성공을 반환합니다.
+            return true;
+        }
+
+        // 너무 긴 닉네임은 거절합니다.
+        if (nickname.Length > 20)
+        {
+            // 어떤 값이 잘못되었는지 콘솔에 출력합니다.
+            Console.WriteLine("Nickname must be 20 characters or fewer.");
+            // 검증 실패를 반환합니다.
+            return false;
+        }
+
+        // 공백이나 특수문자가 섞인 닉네임은 명령 파싱을 헷갈리게 만들 수 있으므로 거절합니다.
+        if (!nickname.All(character => AllowedNicknameCharacters.Contains(character)))
+        {
+            // 어떤 규칙을 지켜야 하는지 콘솔에 출력합니다.
+            Console.WriteLine("Nickname can contain only letters, numbers, '-' and '_'.");
+            // 검증 실패를 반환합니다.
+            return false;
+        }
+
+        // 모든 검증을 통과했습니다.
         return true;
     }
 

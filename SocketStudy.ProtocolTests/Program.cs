@@ -12,6 +12,7 @@ await RunTooLargeLengthTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
+RunInvalidClientNicknameOptionParseTest();
 await RunClientRegistryTracksCountAndNamesAsync();
 await RunClientRegistryFindsNamesCaseInsensitiveAsync();
 await RunClientRegistryFiltersRoomsAsync();
@@ -147,6 +148,20 @@ static void RunRemoteClientOptionParseTest()
     if (!parsed || host != "192.168.0.10" || port != 6500 || nickname != "bob")
     {
         throw new InvalidOperationException("Remote client options were not parsed correctly.");
+    }
+}
+
+static void RunInvalidClientNicknameOptionParseTest()
+{
+    bool parsed = CommandLineOptions.TryReadClientOptions(
+        ["client", "6500", "bad name"],
+        out _,
+        out _,
+        out _);
+
+    if (parsed)
+    {
+        throw new InvalidOperationException("Invalid client nickname option should not be parsed successfully.");
     }
 }
 
