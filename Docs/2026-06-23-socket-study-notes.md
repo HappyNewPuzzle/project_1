@@ -307,6 +307,7 @@ public sealed record NetworkMessage(MessageType Type, string Text);
 | `/name <nickname>` | 닉네임 변경 |
 | `/users` | 현재 접속자 목록 보기 |
 | `/time` | 서버 현재 시간 보기 |
+| `/me <action>` | 행동 메시지를 전체 채팅으로 보내기 |
 | `/whisper <nickname> <message>` | 특정 사용자에게만 메시지 보내기 |
 | `/quit` | 서버에 종료 의사를 보내고 연결 종료 |
 

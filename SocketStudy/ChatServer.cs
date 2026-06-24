@@ -17,6 +17,7 @@ sealed class ChatServer
         commandHandler = new ChatCommandHandler(
             SendToClientAsync,
             message => BroadcastServerNoticeAsync(message),
+            BroadcastActionMessageAsync,
             clients.GetNames,
             clients.IsNameInUse,
             clients.FindByName);
@@ -164,6 +165,20 @@ sealed class ChatServer
         {
             // 보낸 사람을 포함한 모든 접속자에게 같은 채팅 메시지를 전달합니다.
             await SendToClientAsync(client, MessageType.Chat, chatMessage);
+        }
+    }
+
+    // 행동 메시지를 접속 중인 모든 클라이언트에게 보내는 메서드입니다.
+    private async Task BroadcastActionMessageAsync(ClientConnection sender, string message)
+    {
+        // lock 안에서 await를 하지 않기 위해 먼저 보낼 대상 목록의 복사본을 만듭니다.
+        ClientConnection[] targets = clients.Snapshot();
+
+        // 복사해 둔 클라이언트 목록을 돌면서 행동 메시지를 보냅니다.
+        foreach (ClientConnection client in targets)
+        {
+            // 행동 메시지는 이미 화면에 표시할 문장을 갖고 있으므로 그대로 전달합니다.
+            await SendToClientAsync(client, MessageType.Chat, message);
         }
     }
 

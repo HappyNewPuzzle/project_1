@@ -7,6 +7,9 @@ sealed class ChatCommandHandler
     // 전체 클라이언트에게 서버 공지를 보내는 함수입니다.
     private readonly Func<string, Task> broadcastNoticeAsync;
 
+    // 전체 클라이언트에게 채팅 메시지를 보내는 함수입니다.
+    private readonly Func<ClientConnection, string, Task> broadcastChatAsync;
+
     // 현재 접속자 이름 목록을 가져오는 함수입니다.
     private readonly Func<string[]> getClientNames;
 
@@ -20,6 +23,7 @@ sealed class ChatCommandHandler
     public ChatCommandHandler(
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
         Func<string, Task> broadcastNoticeAsync,
+        Func<ClientConnection, string, Task> broadcastChatAsync,
         Func<string[]> getClientNames,
         Func<string, ClientConnection, bool> isNameInUse,
         Func<string, ClientConnection?> findClientByName)
@@ -28,6 +32,8 @@ sealed class ChatCommandHandler
         this.sendToClientAsync = sendToClientAsync;
         // 전체 공지 함수를 저장합니다.
         this.broadcastNoticeAsync = broadcastNoticeAsync;
+        // 전체 채팅 함수를 저장합니다.
+        this.broadcastChatAsync = broadcastChatAsync;
         // 접속자 이름 조회 함수를 저장합니다.
         this.getClientNames = getClientNames;
         // 이름 중복 확인 함수를 저장합니다.
@@ -61,7 +67,7 @@ sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /time, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /time, /me <action>, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -84,6 +90,26 @@ sealed class ChatCommandHandler
             string serverTime = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz");
             // 서버 시간을 notice 메시지로 전송합니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Server time: {serverTime}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /me 명령은 행동 메시지를 전체 채팅으로 보냅니다.
+        if (message.Text.StartsWith("/me ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 행동 메시지 본문만 잘라냅니다.
+            string action = message.Text["/me ".Length..].Trim();
+            // 행동이 비어 있으면 사용법을 안내합니다.
+            if (string.IsNullOrWhiteSpace(action))
+            {
+                // 보낸 사람에게만 사용법을 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "Usage: /me <action>");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 전체 클라이언트에게 행동 메시지를 보냅니다.
+            await broadcastChatAsync(connection, $"* {connection.Name} {action}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
