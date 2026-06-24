@@ -4,6 +4,9 @@ public sealed class ChatCommandHandler
     // 방 이름에 허용할 문자 집합입니다.
     private const string AllowedRoomNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
 
+    // 닉네임에 허용된 문자 집합입니다.
+    private const string AllowedNicknameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
+
     // 사용자에게 보여줄 명령 목록입니다.
     private const string CommandList = "Commands: /help, /commands, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
 
@@ -298,6 +301,13 @@ public sealed class ChatCommandHandler
         return roomName.All(character => AllowedRoomNameCharacters.Contains(character));
     }
 
+    // 닉네임이 허용된 문자로만 이루어졌는지 확인합니다.
+    private static bool IsValidNickname(string nickname)
+    {
+        // 모든 문자가 허용된 문자 집합 안에 있는지 확인합니다.
+        return nickname.All(character => AllowedNicknameCharacters.Contains(character));
+    }
+
     // 서버 실행 시간을 화면에 보여주기 좋은 문자열로 바꿉니다.
     private static string FormatUptime(TimeSpan uptime)
     {
@@ -371,6 +381,15 @@ public sealed class ChatCommandHandler
         {
             // 보낸 사람에게만 실패 이유를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, "Nickname must be 20 characters or fewer.");
+            // 메서드를 종료합니다.
+            return;
+        }
+
+        // 닉네임은 명령 파싱이 쉬운 문자만 허용합니다.
+        if (!IsValidNickname(requestedName))
+        {
+            // 보낸 사람에게만 실패 이유를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, "Nickname can contain only letters, numbers, '-' and '_'.");
             // 메서드를 종료합니다.
             return;
         }

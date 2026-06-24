@@ -30,6 +30,7 @@ await RunRoomUsersCommandTestAsync();
 await RunMeCommandTestAsync();
 await RunWhisperCommandTestAsync();
 await RunDuplicateNameCommandTestAsync();
+await RunInvalidNameCommandTestAsync();
 
 Console.WriteLine("All protocol tests passed.");
 
@@ -489,6 +490,25 @@ static async Task RunDuplicateNameCommandTestAsync()
     if (context.SentMessages.Single().Text != "Nickname is already in use: bob")
     {
         throw new InvalidOperationException("Duplicate /name did not return the expected notice.");
+    }
+}
+
+static async Task RunInvalidNameCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/name bad name"));
+
+    if (!handled || context.Connection.Name != "alice")
+    {
+        throw new InvalidOperationException("Invalid /name should not rename the client.");
+    }
+
+    if (context.SentMessages.Single().Text != "Nickname can contain only letters, numbers, '-' and '_'.")
+    {
+        throw new InvalidOperationException("Invalid /name did not return the expected notice.");
     }
 }
 
