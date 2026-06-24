@@ -4,6 +4,9 @@ using System.Net.Sockets;
 // TCP 채팅 서버의 실행과 클라이언트 관리를 담당합니다.
 sealed class ChatServer
 {
+    // 접속자 목록 관리를 전담하는 registry입니다.
+    private readonly ClientRegistry clients = new();
+
     // TCP 서버를 실행하는 비동기 메서드입니다.
     public async Task RunAsync(int port, CancellationToken cancellationToken)
     {
@@ -68,9 +71,9 @@ sealed class ChatServer
         // 현재 클라이언트를 서버의 접속자 목록에 추가합니다.
         AddClient(connection);
         // 새로 접속한 클라이언트 본인에게 환영 메시지와 현재 접속자 수를 알려줍니다.
-        await SendToClientAsync(connection, MessageType.Notice, $"Welcome, {clientName}. Online clients: {GetClientCount()}");
+        await SendToClientAsync(connection, MessageType.Notice, $"Welcome, {clientName}. Online clients: {clients.Count}");
         // 기존 클라이언트들에게 새 클라이언트가 들어왔다는 서버 공지를 보냅니다.
-        await BroadcastServerNoticeAsync($"{clientName} joined. Online clients: {GetClientCount()}", except: connection);
+        await BroadcastServerNoticeAsync($"{clientName} joined. Online clients: {clients.Count}", except: connection);
 
         // 네트워크 연결은 중간에 끊길 수 있으므로 예외 처리를 준비합니다.
         try
@@ -126,7 +129,7 @@ sealed class ChatServer
             // 클라이언트 소켓을 닫아서 운영체제 리소스를 반납합니다.
             client.Close();
             // 남아 있는 클라이언트들에게 이 클라이언트가 나갔다는 서버 공지를 보냅니다.
-            await BroadcastServerNoticeAsync($"{connection.Name} left. Online clients: {GetClientCount()}");
+            await BroadcastServerNoticeAsync($"{connection.Name} left. Online clients: {clients.Count}");
             // 클라이언트 연결이 종료되었다는 사실을 서버 콘솔에 출력합니다.
             AppLogger.Info($"[server] Client disconnected: {connection.Name}");
         }
@@ -166,7 +169,7 @@ sealed class ChatServer
         if (message.Text.Equals("/users", StringComparison.OrdinalIgnoreCase))
         {
             // 현재 접속자 이름 목록을 가져옵니다.
-            string[] names = GetClientNames();
+            string[] names = clients.GetNames();
             // 접속자 목록을 보낸 사람에게만 알려줍니다.
             await SendToClientAsync(connection, MessageType.Notice, $"Online users ({names.Length}): {string.Join(", ", names)}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -212,7 +215,7 @@ sealed class ChatServer
         }
 
         // 이미 다른 클라이언트가 쓰고 있는 닉네임이면 변경하지 않습니다.
-        if (IsClientNameInUse(requestedName, except: connection))
+        if (clients.IsNameInUse(requestedName, except: connection))
         {
             // 보낸 사람에게만 실패 이유를 알려줍니다.
             await SendToClientAsync(connection, MessageType.Notice, $"Nickname is already in use: {requestedName}");
@@ -234,20 +237,13 @@ sealed class ChatServer
     private async Task BroadcastChatMessageAsync(ClientConnection sender, string message)
     {
         // lock 안에서 await를 하지 않기 위해 먼저 보낼 대상 목록의 복사본을 만듭니다.
-        ClientConnection[] clients;
-
-        // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // 현재 접속해 있는 모든 클라이언트를 전송 대상으로 복사합니다.
-            clients = ServerState.Clients.ToArray();
-        }
+        ClientConnection[] targets = clients.Snapshot();
 
         // 클라이언트 화면에 표시할 채팅 메시지 형식을 만듭니다.
         string chatMessage = $"{sender.Name}: {message}";
 
         // 복사해 둔 클라이언트 목록을 돌면서 채팅 메시지를 보냅니다.
-        foreach (ClientConnection client in clients)
+        foreach (ClientConnection client in targets)
         {
             // 보낸 사람을 포함한 모든 접속자에게 같은 채팅 메시지를 전달합니다.
             await SendToClientAsync(client, MessageType.Chat, chatMessage);
@@ -257,86 +253,31 @@ sealed class ChatServer
     // 현재 클라이언트를 접속자 목록에 추가하는 메서드입니다.
     private void AddClient(ClientConnection connection)
     {
-        // 여러 클라이언트 작업이 동시에 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // 접속자 목록에 새 연결을 추가합니다.
-            ServerState.Clients.Add(connection);
-        }
+        // 접속자 목록에 새 연결을 추가하고 현재 인원 수를 받습니다.
+        int count = clients.Add(connection);
 
         // 서버 콘솔에 현재 접속자 수를 출력합니다.
-        AppLogger.Info($"[server] Online clients: {GetClientCount()}");
+        AppLogger.Info($"[server] Online clients: {count}");
     }
 
     // 현재 클라이언트를 접속자 목록에서 제거하는 메서드입니다.
     private void RemoveClient(ClientConnection connection)
     {
-        // 여러 클라이언트 작업이 동시에 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // 접속자 목록에서 연결을 제거합니다.
-            ServerState.Clients.Remove(connection);
-        }
+        // 접속자 목록에서 연결을 제거하고 현재 인원 수를 받습니다.
+        int count = clients.Remove(connection);
 
         // 서버 콘솔에 현재 접속자 수를 출력합니다.
-        AppLogger.Info($"[server] Online clients: {GetClientCount()}");
-    }
-
-    // 현재 접속자 수를 가져오는 메서드입니다.
-    private int GetClientCount()
-    {
-        // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // 현재 접속자 목록의 개수를 반환합니다.
-            return ServerState.Clients.Count;
-        }
-    }
-
-    // 현재 접속자 이름 목록을 가져오는 메서드입니다.
-    private string[] GetClientNames()
-    {
-        // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // 현재 접속자 이름만 배열로 복사해서 반환합니다.
-            return ServerState.Clients
-                .Select(client => client.Name)
-                .OrderBy(name => name)
-                .ToArray();
-        }
-    }
-
-    // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 메서드입니다.
-    private bool IsClientNameInUse(string name, ClientConnection except)
-    {
-        // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // 자기 자신을 제외하고 같은 이름을 쓰는 클라이언트가 있는지 확인합니다.
-            return ServerState.Clients.Any(client =>
-                client != except &&
-                string.Equals(client.Name, name, StringComparison.OrdinalIgnoreCase));
-        }
+        AppLogger.Info($"[server] Online clients: {count}");
     }
 
     // 서버 공지를 여러 클라이언트에게 보내는 메서드입니다.
     private async Task BroadcastServerNoticeAsync(string message, ClientConnection? except = null)
     {
         // lock 안에서 await를 하지 않기 위해 먼저 보낼 대상 목록의 복사본을 만듭니다.
-        ClientConnection[] clients;
-
-        // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // except로 전달된 클라이언트는 공지 대상에서 제외합니다.
-            clients = ServerState.Clients
-                .Where(client => client != except)
-                .ToArray();
-        }
+        ClientConnection[] targets = clients.Snapshot(except);
 
         // 복사해 둔 클라이언트 목록을 돌면서 공지 메시지를 보냅니다.
-        foreach (ClientConnection client in clients)
+        foreach (ClientConnection client in targets)
         {
             // notice prefix를 붙여서 일반 chat 메시지와 구분합니다.
             await SendToClientAsync(client, MessageType.Notice, message);
@@ -370,19 +311,10 @@ sealed class ChatServer
     private void CloseAllClients()
     {
         // lock 안에서 오래 작업하지 않기 위해 먼저 접속자 목록 복사본을 만듭니다.
-        ClientConnection[] clients;
-
-        // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
-        lock (ServerState.Gate)
-        {
-            // 현재 접속자 목록을 배열로 복사합니다.
-            clients = ServerState.Clients.ToArray();
-            // 서버 종료 중에는 목록을 비워서 중복 정리를 줄입니다.
-            ServerState.Clients.Clear();
-        }
+        ClientConnection[] targets = clients.Drain();
 
         // 복사해 둔 클라이언트 목록을 돌면서 연결을 닫습니다.
-        foreach (ClientConnection client in clients)
+        foreach (ClientConnection client in targets)
         {
             // 각 클라이언트 소켓을 닫아 pending read/write를 깨웁니다.
             client.Close();

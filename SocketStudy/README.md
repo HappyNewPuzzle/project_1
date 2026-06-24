@@ -131,7 +131,7 @@ dotnet run -- client 6000
 - `ChatServer.cs`: 서버 accept loop, 클라이언트 처리, 채팅 명령 처리
 - `ChatClient.cs`: 서버 접속, 사용자 입력, 서버 메시지 수신
 - `ClientConnection.cs`: 클라이언트 한 명의 연결 정보와 전송 lock
-- `ServerState.cs`: 서버 전체의 접속자 목록
+- `ClientRegistry.cs`: 서버 전체의 접속자 목록 관리
 - `MessageProtocol.cs`: 4바이트 길이 + UTF-8 본문 protocol
 
 `TcpListener`는 서버 소켓 역할을 합니다.
