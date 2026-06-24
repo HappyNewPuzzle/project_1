@@ -539,3 +539,119 @@ git show 6acd390
 추천 다음 step은 `ClientRegistry` 분리입니다. 지금 `ChatServer`가 아직 접속자 목록 lock과 검색을 직접 들고 있어서, 이 부분을 클래스로 빼면 서버 코드가 더 읽기 쉬워집니다.
 
 추가로 방 이름은 명령 파싱을 단순하게 유지하기 위해 영문, 숫자, `-`, `_`만 허용하도록 정리했습니다.
+
+## 17. 2026-06-24 이어서 진행한 내용
+
+오늘은 기능을 크게 한 번에 바꾸기보다, 작은 step을 계속 쌓으면서 테스트와 구조를 같이 단단하게 만들었습니다.
+
+핵심 흐름은 아래와 같습니다.
+
+1. `ChatCommandHandler` 테스트 추가
+2. `ClientRegistry` 테스트 추가
+3. `/ping`, `/uptime`, `/whoami`, `/leave`, `/rename` 명령 추가
+4. `/commands`를 `/help` 별칭으로 추가
+5. 닉네임과 방 이름 규칙을 `NameRules`로 공통화
+6. 클라이언트 시작 닉네임도 같은 규칙으로 검증
+7. 테스트 중 의도적으로 출력되는 콘솔 메시지를 캡처해서 테스트 출력을 깔끔하게 정리
+8. 기본 방 `lobby`를 항상 방 목록에 포함
+
+### 테스트가 늘어난 이유
+
+명령이 많아질수록 직접 실행해서 확인하는 방식만으로는 실수하기 쉽습니다.
+
+그래서 `SocketStudy.ProtocolTests/Program.cs`에 아래 테스트들을 추가했습니다.
+
+- `/help`, `/commands`
+- `/where`, `/whoami`
+- `/join`, `/leave`
+- `/room-users`
+- `/me`
+- `/whisper`
+- `/name`, `/rename`
+- 잘못된 닉네임과 방 이름
+- `ClientRegistry`의 접속자 목록, 방 목록, 중복 이름 검색, drain 동작
+
+이 테스트들은 실제 서버 전체를 띄우기보다 필요한 객체만 만들어서 명령 처리 결과를 확인합니다.
+
+공부 포인트:
+
+- 테스트하기 쉬운 코드는 보통 의존성을 밖에서 주입받습니다.
+- `ChatCommandHandler`는 메시지 전송, 공지 방송, 방 이동 같은 동작을 함수로 주입받습니다.
+- 그래서 실제 네트워크 없이도 명령 처리 결과를 검증할 수 있습니다.
+
+### 시간 주입
+
+`/time`과 `/uptime`은 현재 시간이 필요합니다.
+
+처음처럼 코드 안에서 바로 `DateTimeOffset.Now`를 읽으면 테스트할 때 결과가 매번 달라집니다.
+
+그래서 현재 시간을 가져오는 함수를 생성자로 전달하도록 바꿨습니다.
+
+```csharp
+Func<DateTimeOffset> getCurrentTime
+```
+
+이렇게 하면 실제 서버에서는 현재 시간을 쓰고, 테스트에서는 고정된 시간을 넣을 수 있습니다.
+
+공부 포인트:
+
+- 시간이 들어가는 코드는 테스트가 어려워지기 쉽습니다.
+- 현재 시간을 직접 읽는 대신 함수로 주입하면 테스트가 쉬워집니다.
+
+### 이름 규칙 공통화
+
+닉네임과 방 이름은 같은 문자 규칙을 사용합니다.
+
+- 영문
+- 숫자
+- `-`
+- `_`
+- 최대 20자
+
+이 규칙을 여러 파일에 복사해두면 나중에 한쪽만 바뀔 수 있습니다.
+
+그래서 `NameRules.cs`를 추가했습니다.
+
+```csharp
+public static class NameRules
+{
+    public const int MaxNameLength = 20;
+    public static bool HasOnlyAllowedCharacters(string name) { ... }
+}
+```
+
+공부 포인트:
+
+- 중복 제거는 단순히 코드를 줄이는 일이 아닙니다.
+- 같은 정책을 한 곳에서 관리해서 실수를 줄이는 일입니다.
+
+### 기본 방 lobby
+
+`ClientConnection`의 기본 방은 이제 문자열 `"lobby"`를 직접 쓰지 않고 `ClientRegistry.DefaultRoomName`을 사용합니다.
+
+또한 `/rooms` 결과에는 접속자가 없어도 기본 방이 항상 포함됩니다.
+
+공부 포인트:
+
+- 중요한 문자열을 여러 곳에 직접 쓰면 오타와 불일치가 생깁니다.
+- 상수로 빼면 의미가 분명해지고 변경도 쉬워집니다.
+
+### 오늘 추가된 주요 커밋
+
+```text
+7f18ae5 Add commands alias
+b4eab9d Validate nickname characters
+7cb8488 Validate startup nickname options
+502ead1 Extract shared name rules
+4ee7577 Capture option validation test output
+000e91d Show help hint on client start
+435c2a8 Keep default room in room list
+908add5 Add rename command alias
+```
+
+복습 추천 순서:
+
+1. `ChatCommandHandler.cs`에서 `/rename`, `/leave`, `/whoami`가 어떻게 처리되는지 보기
+2. `SocketStudy.ProtocolTests/Program.cs`에서 각 명령 테스트가 어떤 값을 검증하는지 보기
+3. `NameRules.cs`를 보고 닉네임과 방 이름 규칙이 어디서 재사용되는지 찾기
+4. `ClientRegistry.cs`에서 `DefaultRoomName`과 `GetRoomNames()` 흐름 보기
