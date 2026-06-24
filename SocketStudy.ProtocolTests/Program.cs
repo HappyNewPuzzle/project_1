@@ -20,6 +20,7 @@ await RunHelpCommandTestAsync();
 await RunWhereCommandTestAsync();
 await RunPingCommandTestAsync();
 await RunTimeCommandTestAsync();
+await RunUptimeCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
@@ -320,6 +321,22 @@ static async Task RunTimeCommandTestAsync()
     }
 }
 
+static async Task RunUptimeCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.ServerStartedAt = new DateTimeOffset(2026, 6, 24, 10, 0, 0, TimeSpan.FromHours(9));
+    context.CurrentTime = new DateTimeOffset(2026, 6, 24, 10, 5, 7, TimeSpan.FromHours(9));
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/uptime"));
+
+    if (!handled || context.SentMessages.Single().Text != "Server uptime: 00:05:07")
+    {
+        throw new InvalidOperationException("/uptime did not return the expected elapsed time.");
+    }
+}
+
 static async Task RunJoinCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -514,6 +531,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public DateTimeOffset CurrentTime { get; set; } = DateTimeOffset.UnixEpoch;
 
+    public DateTimeOffset ServerStartedAt { get; set; } = DateTimeOffset.UnixEpoch;
+
     private CommandHandlerTestContext(NetworkPair pair, string name)
     {
         this.pair = pair;
@@ -530,7 +549,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             IsNameInUse,
             FindClientByName,
             MoveClientToRoomAsync,
-            () => CurrentTime);
+            () => CurrentTime,
+            () => ServerStartedAt);
     }
 
     public static async Task<CommandHandlerTestContext> CreateAsync(string name)

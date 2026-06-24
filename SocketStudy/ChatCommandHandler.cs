@@ -34,6 +34,9 @@ public sealed class ChatCommandHandler
     // 현재 서버 시간을 가져오는 함수입니다.
     private readonly Func<DateTimeOffset> getCurrentTime;
 
+    // 서버가 시작된 시각을 가져오는 함수입니다.
+    private readonly Func<DateTimeOffset> getServerStartedAt;
+
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
@@ -45,7 +48,8 @@ public sealed class ChatCommandHandler
         Func<string, ClientConnection, bool> isNameInUse,
         Func<string, ClientConnection?> findClientByName,
         Func<ClientConnection, string, Task> moveClientToRoomAsync,
-        Func<DateTimeOffset> getCurrentTime)
+        Func<DateTimeOffset> getCurrentTime,
+        Func<DateTimeOffset> getServerStartedAt)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -67,6 +71,8 @@ public sealed class ChatCommandHandler
         this.moveClientToRoomAsync = moveClientToRoomAsync;
         // 현재 시간 조회 함수를 저장합니다.
         this.getCurrentTime = getCurrentTime;
+        // 서버 시작 시각 조회 함수를 저장합니다.
+        this.getServerStartedAt = getServerStartedAt;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -94,7 +100,7 @@ public sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /me <action>, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -168,6 +174,17 @@ public sealed class ChatCommandHandler
             string serverTime = getCurrentTime().ToString("yyyy-MM-dd HH:mm:ss zzz");
             // 서버 시간을 notice 메시지로 전송합니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Server time: {serverTime}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /uptime 명령은 서버가 켜져 있었던 시간을 보여줍니다.
+        if (message.Text.Equals("/uptime", StringComparison.OrdinalIgnoreCase))
+        {
+            // 현재 시간과 서버 시작 시간의 차이를 계산합니다.
+            TimeSpan uptime = getCurrentTime() - getServerStartedAt();
+            // 보기 쉬운 문자열로 바꾸어 보낸 사람에게만 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Server uptime: {FormatUptime(uptime)}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -257,6 +274,25 @@ public sealed class ChatCommandHandler
     {
         // 모든 문자가 허용된 문자 집합 안에 있는지 확인합니다.
         return roomName.All(character => AllowedRoomNameCharacters.Contains(character));
+    }
+
+    // 서버 실행 시간을 화면에 보여주기 좋은 문자열로 바꿉니다.
+    private static string FormatUptime(TimeSpan uptime)
+    {
+        // 시계 차이 등으로 음수가 나오면 0초로 보정합니다.
+        if (uptime < TimeSpan.Zero)
+        {
+            uptime = TimeSpan.Zero;
+        }
+
+        // 하루 이상이면 일 단위를 앞에 붙입니다.
+        if (uptime.TotalDays >= 1)
+        {
+            return $"{(int)uptime.TotalDays}d {uptime.Hours:D2}:{uptime.Minutes:D2}:{uptime.Seconds:D2}";
+        }
+
+        // 하루 미만이면 HH:mm:ss 형식으로 보여줍니다.
+        return $"{uptime.Hours:D2}:{uptime.Minutes:D2}:{uptime.Seconds:D2}";
     }
 
     // 특정 클라이언트에게만 개인 메시지를 보냅니다.

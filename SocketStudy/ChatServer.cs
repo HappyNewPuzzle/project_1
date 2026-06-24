@@ -13,6 +13,9 @@ sealed class ChatServer
     // 채팅 서버 객체를 초기화합니다.
     public ChatServer()
     {
+        // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
+        DateTimeOffset serverStartedAt = DateTimeOffset.Now;
+
         // command handler가 필요한 서버 기능을 함수 형태로 전달합니다.
         commandHandler = new ChatCommandHandler(
             SendToClientAsync,
@@ -24,7 +27,8 @@ sealed class ChatServer
             clients.IsNameInUse,
             clients.FindByName,
             MoveClientToRoomAsync,
-            () => DateTimeOffset.Now);
+            () => DateTimeOffset.Now,
+            () => serverStartedAt);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
