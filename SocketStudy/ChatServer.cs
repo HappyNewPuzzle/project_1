@@ -20,6 +20,7 @@ sealed class ChatServer
             BroadcastActionMessageAsync,
             clients.GetNames,
             clients.GetRoomNames,
+            clients.GetNamesInRoom,
             clients.IsNameInUse,
             clients.FindByName,
             MoveClientToRoomAsync);

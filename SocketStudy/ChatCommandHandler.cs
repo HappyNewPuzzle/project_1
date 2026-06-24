@@ -16,6 +16,9 @@ sealed class ChatCommandHandler
     // 현재 채팅방 이름 목록을 가져오는 함수입니다.
     private readonly Func<string[]> getRoomNames;
 
+    // 특정 채팅방의 접속자 이름 목록을 가져오는 함수입니다.
+    private readonly Func<string, string[]> getClientNamesInRoom;
+
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 함수입니다.
     private readonly Func<string, ClientConnection, bool> isNameInUse;
 
@@ -32,6 +35,7 @@ sealed class ChatCommandHandler
         Func<ClientConnection, string, Task> broadcastChatAsync,
         Func<string[]> getClientNames,
         Func<string[]> getRoomNames,
+        Func<string, string[]> getClientNamesInRoom,
         Func<string, ClientConnection, bool> isNameInUse,
         Func<string, ClientConnection?> findClientByName,
         Func<ClientConnection, string, Task> moveClientToRoomAsync)
@@ -46,6 +50,8 @@ sealed class ChatCommandHandler
         this.getClientNames = getClientNames;
         // 채팅방 이름 조회 함수를 저장합니다.
         this.getRoomNames = getRoomNames;
+        // 방별 접속자 이름 조회 함수를 저장합니다.
+        this.getClientNamesInRoom = getClientNamesInRoom;
         // 이름 중복 확인 함수를 저장합니다.
         this.isNameInUse = isNameInUse;
         // 이름 기반 클라이언트 조회 함수를 저장합니다.
@@ -79,7 +85,7 @@ sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /join <room>, /where, /time, /me <action>, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /room-users, /join <room>, /where, /time, /me <action>, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -102,6 +108,17 @@ sealed class ChatCommandHandler
             string[] roomNames = getRoomNames();
             // 방 목록을 보낸 사람에게만 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Rooms ({roomNames.Length}): {string.Join(", ", roomNames)}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /room-users 명령은 현재 방에 있는 클라이언트 이름 목록을 보여줍니다.
+        if (message.Text.Equals("/room-users", StringComparison.OrdinalIgnoreCase))
+        {
+            // 현재 방의 접속자 이름 목록을 가져옵니다.
+            string[] names = getClientNamesInRoom(connection.RoomName);
+            // 방 접속자 목록을 보낸 사람에게만 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Users in {connection.RoomName} ({names.Length}): {string.Join(", ", names)}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

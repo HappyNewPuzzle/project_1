@@ -307,6 +307,7 @@ public sealed record NetworkMessage(MessageType Type, string Text);
 | `/name <nickname>` | 닉네임 변경 |
 | `/users` | 현재 접속자 목록 보기 |
 | `/rooms` | 현재 존재하는 채팅방 목록 보기 |
+| `/room-users` | 현재 채팅방의 접속자 목록 보기 |
 | `/join <room>` | 다른 채팅방으로 이동 |
 | `/where` | 현재 내가 속한 채팅방 보기 |
 | `/time` | 서버 현재 시간 보기 |

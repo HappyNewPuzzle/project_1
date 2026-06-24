@@ -94,6 +94,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 < [notice] Rooms (2): lobby, study
 ```
 
+현재 방의 접속자 목록은 `/room-users`로 확인합니다.
+
+```text
+> /room-users
+< [notice] Users in study (2): alice, bob
+```
+
 현재 내가 있는 방은 `/where`로 확인합니다.
 
 ```text
