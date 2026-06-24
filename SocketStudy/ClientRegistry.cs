@@ -1,6 +1,9 @@
 // 접속 중인 클라이언트 목록을 관리합니다.
 public sealed class ClientRegistry
 {
+    // 기본 채팅방 이름입니다.
+    public const string DefaultRoomName = "lobby";
+
     // 접속자 목록을 동시에 읽고 쓸 때 보호하기 위한 lock 객체입니다.
     private readonly object gate = new();
 
@@ -70,6 +73,7 @@ public sealed class ClientRegistry
             // 현재 접속자들이 속한 방 이름만 중복 없이 정렬해서 반환합니다.
             return clients
                 .Select(client => client.RoomName)
+                .Append(DefaultRoomName)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(roomName => roomName)
                 .ToArray();

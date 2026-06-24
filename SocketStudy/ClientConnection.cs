@@ -7,7 +7,7 @@ public sealed class ClientConnection
     public string Name { get; private set; }
 
     // 클라이언트가 현재 들어가 있는 채팅방 이름입니다.
-    public string RoomName { get; private set; } = "lobby";
+    public string RoomName { get; private set; } = ClientRegistry.DefaultRoomName;
 
     // 실제 TCP 연결 객체입니다.
     public TcpClient Client { get; }

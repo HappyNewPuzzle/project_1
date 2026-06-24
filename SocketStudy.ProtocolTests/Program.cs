@@ -15,6 +15,7 @@ RunRemoteClientOptionParseTest();
 RunInvalidClientNicknameOptionParseTest();
 await RunClientRegistryTracksCountAndNamesAsync();
 await RunClientRegistryFindsNamesCaseInsensitiveAsync();
+RunClientRegistryIncludesDefaultRoom();
 await RunClientRegistryFiltersRoomsAsync();
 await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
@@ -234,6 +235,16 @@ static async Task RunClientRegistryFindsNamesCaseInsensitiveAsync()
     if (registry.IsNameInUse("ALICE", alice))
     {
         throw new InvalidOperationException("ClientRegistry should ignore the current connection when checking names.");
+    }
+}
+
+static void RunClientRegistryIncludesDefaultRoom()
+{
+    var registry = new ClientRegistry();
+
+    if (!registry.GetRoomNames().SequenceEqual([ClientRegistry.DefaultRoomName]))
+    {
+        throw new InvalidOperationException("ClientRegistry should always include the default room.");
     }
 }
 

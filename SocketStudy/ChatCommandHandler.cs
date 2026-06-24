@@ -164,7 +164,7 @@ public sealed class ChatCommandHandler
         if (message.Text.Equals("/leave", StringComparison.OrdinalIgnoreCase))
         {
             // lobby로 이동하는 동작은 /join과 같은 메서드를 재사용합니다.
-            await JoinRoomAsync(connection, "lobby");
+            await JoinRoomAsync(connection, ClientRegistry.DefaultRoomName);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
