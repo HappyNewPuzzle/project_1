@@ -88,7 +88,7 @@ public sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /room-users, /join <room>, /where, /time, /me <action>, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /me <action>, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -142,6 +142,15 @@ public sealed class ChatCommandHandler
         {
             // 보낸 사람에게만 현재 방 이름을 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Current room: {connection.RoomName}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /ping 명령은 서버가 응답 가능한 상태인지 확인합니다.
+        if (message.Text.Equals("/ping", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 짧은 응답을 돌려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, "pong");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

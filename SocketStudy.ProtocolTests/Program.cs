@@ -18,6 +18,7 @@ await RunClientRegistryFiltersRoomsAsync();
 await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
 await RunWhereCommandTestAsync();
+await RunPingCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
@@ -286,6 +287,20 @@ static async Task RunWhereCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Current room: study")
     {
         throw new InvalidOperationException("/where did not report the current room.");
+    }
+}
+
+static async Task RunPingCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/ping"));
+
+    if (!handled || context.SentMessages.Single().Text != "pong")
+    {
+        throw new InvalidOperationException("/ping did not return pong.");
     }
 }
 

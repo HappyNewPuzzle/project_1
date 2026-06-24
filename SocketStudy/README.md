@@ -77,7 +77,7 @@ dotnet run -- client 192.168.0.10 5000 alice
 
 ```text
 > /help
-< [notice] Commands: /help, /name <nickname>, /users, /rooms, /join <room>, /time, /me <action>, /whisper <nickname> <message>, /quit
+< [notice] Commands: /help, /name <nickname>, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /me <action>, /whisper <nickname> <message>, /quit
 ```
 
 처음 접속하면 기본 채팅방 `lobby`에 들어갑니다. 다른 방으로 이동하려면 `/join`을 입력합니다.
@@ -108,6 +108,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 ```text
 > /where
 < [notice] Current room: study
+```
+
+서버가 바로 응답하는지 확인하려면 `/ping`을 입력합니다.
+
+```text
+> /ping
+< [notice] pong
 ```
 
 서버 시간을 확인하려면 `/time`을 입력합니다.
