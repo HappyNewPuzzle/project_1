@@ -19,6 +19,8 @@ sealed class ChatClient
         Console.WriteLine($"[client] Connected to {host}:{port}");
         // 사용자가 메시지를 입력하는 방법과 종료 방법을 안내합니다.
         Console.WriteLine("[client] Type a message and press Enter. Empty line exits.");
+        // 사용자가 명령 목록을 바로 찾을 수 있도록 안내합니다.
+        Console.WriteLine("[client] Type /help to see available commands.");
 
         // TcpClient에서 실제 데이터를 읽고 쓰는 NetworkStream을 가져옵니다.
         await using NetworkStream stream = client.GetStream();
