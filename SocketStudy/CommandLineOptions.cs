@@ -4,9 +4,6 @@ public static class CommandLineOptions
     // 사용자가 포트를 따로 지정하지 않았을 때 사용할 기본 TCP 포트입니다.
     public const int DefaultPort = 5000;
 
-    // 실행 인자로 받은 닉네임에 허용할 문자 집합입니다.
-    private const string AllowedNicknameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
-
     // 잘못 실행했을 때 보여줄 사용법 출력 메서드입니다.
     public static void PrintUsage()
     {
@@ -136,19 +133,19 @@ public static class CommandLineOptions
         }
 
         // 너무 긴 닉네임은 거절합니다.
-        if (nickname.Length > 20)
+        if (nickname.Length > NameRules.MaxNameLength)
         {
             // 어떤 값이 잘못되었는지 콘솔에 출력합니다.
-            Console.WriteLine("Nickname must be 20 characters or fewer.");
+            Console.WriteLine($"Nickname must be {NameRules.MaxNameLength} characters or fewer.");
             // 검증 실패를 반환합니다.
             return false;
         }
 
         // 공백이나 특수문자가 섞인 닉네임은 명령 파싱을 헷갈리게 만들 수 있으므로 거절합니다.
-        if (!nickname.All(character => AllowedNicknameCharacters.Contains(character)))
+        if (!NameRules.HasOnlyAllowedCharacters(nickname))
         {
             // 어떤 규칙을 지켜야 하는지 콘솔에 출력합니다.
-            Console.WriteLine("Nickname can contain only letters, numbers, '-' and '_'.");
+            Console.WriteLine(NameRules.NicknameCharacterRuleMessage);
             // 검증 실패를 반환합니다.
             return false;
         }
