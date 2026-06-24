@@ -13,11 +13,17 @@ sealed class ChatCommandHandler
     // 현재 접속자 이름 목록을 가져오는 함수입니다.
     private readonly Func<string[]> getClientNames;
 
+    // 현재 채팅방 이름 목록을 가져오는 함수입니다.
+    private readonly Func<string[]> getRoomNames;
+
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 함수입니다.
     private readonly Func<string, ClientConnection, bool> isNameInUse;
 
     // 이름으로 클라이언트를 찾는 함수입니다.
     private readonly Func<string, ClientConnection?> findClientByName;
+
+    // 클라이언트를 다른 채팅방으로 이동시키는 함수입니다.
+    private readonly Func<ClientConnection, string, Task> moveClientToRoomAsync;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -25,8 +31,10 @@ sealed class ChatCommandHandler
         Func<string, Task> broadcastNoticeAsync,
         Func<ClientConnection, string, Task> broadcastChatAsync,
         Func<string[]> getClientNames,
+        Func<string[]> getRoomNames,
         Func<string, ClientConnection, bool> isNameInUse,
-        Func<string, ClientConnection?> findClientByName)
+        Func<string, ClientConnection?> findClientByName,
+        Func<ClientConnection, string, Task> moveClientToRoomAsync)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -36,10 +44,14 @@ sealed class ChatCommandHandler
         this.broadcastChatAsync = broadcastChatAsync;
         // 접속자 이름 조회 함수를 저장합니다.
         this.getClientNames = getClientNames;
+        // 채팅방 이름 조회 함수를 저장합니다.
+        this.getRoomNames = getRoomNames;
         // 이름 중복 확인 함수를 저장합니다.
         this.isNameInUse = isNameInUse;
         // 이름 기반 클라이언트 조회 함수를 저장합니다.
         this.findClientByName = findClientByName;
+        // 채팅방 이동 함수를 저장합니다.
+        this.moveClientToRoomAsync = moveClientToRoomAsync;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -67,7 +79,7 @@ sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /time, /me <action>, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /join <room>, /time, /me <action>, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -79,6 +91,28 @@ sealed class ChatCommandHandler
             string[] names = getClientNames();
             // 접속자 목록을 보낸 사람에게만 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Online users ({names.Length}): {string.Join(", ", names)}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /rooms 명령은 현재 존재하는 채팅방 목록을 보여줍니다.
+        if (message.Text.Equals("/rooms", StringComparison.OrdinalIgnoreCase))
+        {
+            // 현재 방 이름 목록을 가져옵니다.
+            string[] roomNames = getRoomNames();
+            // 방 목록을 보낸 사람에게만 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Rooms ({roomNames.Length}): {string.Join(", ", roomNames)}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /join 명령은 클라이언트를 다른 채팅방으로 이동시킵니다.
+        if (message.Text.StartsWith("/join ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 명령 뒤쪽의 방 이름만 잘라냅니다.
+            string roomName = message.Text["/join ".Length..].Trim();
+            // 채팅방 이동을 처리합니다.
+            await JoinRoomAsync(connection, roomName);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -138,6 +172,31 @@ sealed class ChatCommandHandler
         await sendToClientAsync(connection, MessageType.Notice, $"Unknown command: {message.Text}");
         // 명령을 처리했다고 호출자에게 알려줍니다.
         return true;
+    }
+
+    // 클라이언트를 다른 채팅방으로 이동시킵니다.
+    private async Task JoinRoomAsync(ClientConnection connection, string roomName)
+    {
+        // 방 이름이 비어 있으면 이동하지 않습니다.
+        if (string.IsNullOrWhiteSpace(roomName))
+        {
+            // 보낸 사람에게만 실패 이유를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, "Room name cannot be empty.");
+            // 메서드를 종료합니다.
+            return;
+        }
+
+        // 너무 긴 방 이름은 화면을 어지럽히므로 20자로 제한합니다.
+        if (roomName.Length > 20)
+        {
+            // 보낸 사람에게만 실패 이유를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, "Room name must be 20 characters or fewer.");
+            // 메서드를 종료합니다.
+            return;
+        }
+
+        // 서버에게 실제 이동을 요청합니다.
+        await moveClientToRoomAsync(connection, roomName);
     }
 
     // 특정 클라이언트에게만 개인 메시지를 보냅니다.

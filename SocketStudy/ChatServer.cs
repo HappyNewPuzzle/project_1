@@ -19,8 +19,10 @@ sealed class ChatServer
             message => BroadcastServerNoticeAsync(message),
             BroadcastActionMessageAsync,
             clients.GetNames,
+            clients.GetRoomNames,
             clients.IsNameInUse,
-            clients.FindByName);
+            clients.FindByName,
+            MoveClientToRoomAsync);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
@@ -87,9 +89,9 @@ sealed class ChatServer
         // 현재 클라이언트를 서버의 접속자 목록에 추가합니다.
         AddClient(connection);
         // 새로 접속한 클라이언트 본인에게 환영 메시지와 현재 접속자 수를 알려줍니다.
-        await SendToClientAsync(connection, MessageType.Notice, $"Welcome, {clientName}. Online clients: {clients.Count}");
+        await SendToClientAsync(connection, MessageType.Notice, $"Welcome, {clientName}. Room: {connection.RoomName}. Online clients: {clients.Count}");
         // 기존 클라이언트들에게 새 클라이언트가 들어왔다는 서버 공지를 보냅니다.
-        await BroadcastServerNoticeAsync($"{clientName} joined. Online clients: {clients.Count}", except: connection);
+        await BroadcastRoomNoticeAsync(connection.RoomName, $"{clientName} joined {connection.RoomName}. Online clients: {clients.Count}", except: connection);
 
         // 네트워크 연결은 중간에 끊길 수 있으므로 예외 처리를 준비합니다.
         try
@@ -145,7 +147,7 @@ sealed class ChatServer
             // 클라이언트 소켓을 닫아서 운영체제 리소스를 반납합니다.
             client.Close();
             // 남아 있는 클라이언트들에게 이 클라이언트가 나갔다는 서버 공지를 보냅니다.
-            await BroadcastServerNoticeAsync($"{connection.Name} left. Online clients: {clients.Count}");
+            await BroadcastRoomNoticeAsync(connection.RoomName, $"{connection.Name} left {connection.RoomName}. Online clients: {clients.Count}");
             // 클라이언트 연결이 종료되었다는 사실을 서버 콘솔에 출력합니다.
             AppLogger.Info($"[server] Client disconnected: {connection.Name}");
         }
@@ -155,10 +157,10 @@ sealed class ChatServer
     private async Task BroadcastChatMessageAsync(ClientConnection sender, string message)
     {
         // lock 안에서 await를 하지 않기 위해 먼저 보낼 대상 목록의 복사본을 만듭니다.
-        ClientConnection[] targets = clients.Snapshot();
+        ClientConnection[] targets = clients.SnapshotRoom(sender.RoomName);
 
         // 클라이언트 화면에 표시할 채팅 메시지 형식을 만듭니다.
-        string chatMessage = $"{sender.Name}: {message}";
+        string chatMessage = $"[{sender.RoomName}] {sender.Name}: {message}";
 
         // 복사해 둔 클라이언트 목록을 돌면서 채팅 메시지를 보냅니다.
         foreach (ClientConnection client in targets)
@@ -172,7 +174,7 @@ sealed class ChatServer
     private async Task BroadcastActionMessageAsync(ClientConnection sender, string message)
     {
         // lock 안에서 await를 하지 않기 위해 먼저 보낼 대상 목록의 복사본을 만듭니다.
-        ClientConnection[] targets = clients.Snapshot();
+        ClientConnection[] targets = clients.SnapshotRoom(sender.RoomName);
 
         // 복사해 둔 클라이언트 목록을 돌면서 행동 메시지를 보냅니다.
         foreach (ClientConnection client in targets)
@@ -214,6 +216,44 @@ sealed class ChatServer
             // notice prefix를 붙여서 일반 chat 메시지와 구분합니다.
             await SendToClientAsync(client, MessageType.Notice, message);
         }
+    }
+
+    // 특정 채팅방에 서버 공지를 보내는 메서드입니다.
+    private async Task BroadcastRoomNoticeAsync(string roomName, string message, ClientConnection? except = null)
+    {
+        // 해당 방의 접속자 목록 복사본을 가져옵니다.
+        ClientConnection[] targets = clients.SnapshotRoom(roomName, except);
+
+        // 복사해 둔 클라이언트 목록을 돌면서 공지 메시지를 보냅니다.
+        foreach (ClientConnection client in targets)
+        {
+            // notice 메시지로 방 공지를 전달합니다.
+            await SendToClientAsync(client, MessageType.Notice, message);
+        }
+    }
+
+    // 클라이언트를 다른 채팅방으로 이동시키는 메서드입니다.
+    private async Task MoveClientToRoomAsync(ClientConnection connection, string roomName)
+    {
+        // 이전 방 이름을 보관합니다.
+        string oldRoomName = connection.RoomName;
+        // 이미 같은 방이면 이동하지 않습니다.
+        if (string.Equals(oldRoomName, roomName, StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 현재 방 안내를 보냅니다.
+            await SendToClientAsync(connection, MessageType.Notice, $"You are already in {connection.RoomName}.");
+            // 메서드를 종료합니다.
+            return;
+        }
+
+        // 이전 방에 퇴장 공지를 보냅니다.
+        await BroadcastRoomNoticeAsync(oldRoomName, $"{connection.Name} left {oldRoomName}.", except: connection);
+        // 연결 객체의 방 이름을 변경합니다.
+        connection.MoveToRoom(roomName);
+        // 새 방에 입장 공지를 보냅니다.
+        await BroadcastRoomNoticeAsync(connection.RoomName, $"{connection.Name} joined {connection.RoomName}.", except: connection);
+        // 이동한 본인에게 현재 방을 알려줍니다.
+        await SendToClientAsync(connection, MessageType.Notice, $"Joined room: {connection.RoomName}");
     }
 
     // 클라이언트 한 명에게 메시지를 안전하게 보내는 메서드입니다.

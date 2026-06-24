@@ -306,6 +306,8 @@ public sealed record NetworkMessage(MessageType Type, string Text);
 | `/help` | 사용 가능한 명령 목록 보기 |
 | `/name <nickname>` | 닉네임 변경 |
 | `/users` | 현재 접속자 목록 보기 |
+| `/rooms` | 현재 존재하는 채팅방 목록 보기 |
+| `/join <room>` | 다른 채팅방으로 이동 |
 | `/time` | 서버 현재 시간 보기 |
 | `/me <action>` | 행동 메시지를 전체 채팅으로 보내기 |
 | `/whisper <nickname> <message>` | 특정 사용자에게만 메시지 보내기 |
@@ -528,9 +530,8 @@ git show 6acd390
 
 1. `ClientRegistry` 클래스로 접속자 목록 관리 분리
 2. `ChatCommandHandler` 클래스로 slash command 처리 분리
-3. 채팅방 room 개념 추가
-4. JSON 기반 message body로 protocol 확장
-5. 테스트 프로젝트를 xUnit으로 전환
-6. 서버 자동 통합 테스트 추가
+3. JSON 기반 message body로 protocol 확장
+4. 테스트 프로젝트를 xUnit으로 전환
+5. 서버 자동 통합 테스트 추가
 
 추천 다음 step은 `ClientRegistry` 분리입니다. 지금 `ChatServer`가 아직 접속자 목록 lock과 검색을 직접 들고 있어서, 이 부분을 클래스로 빼면 서버 코드가 더 읽기 쉬워집니다.

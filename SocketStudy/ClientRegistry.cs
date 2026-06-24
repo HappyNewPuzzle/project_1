@@ -61,6 +61,21 @@ sealed class ClientRegistry
         }
     }
 
+    // 현재 존재하는 채팅방 이름 목록을 가져옵니다.
+    public string[] GetRoomNames()
+    {
+        // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+        lock (gate)
+        {
+            // 현재 접속자들이 속한 방 이름만 중복 없이 정렬해서 반환합니다.
+            return clients
+                .Select(client => client.RoomName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(roomName => roomName)
+                .ToArray();
+        }
+    }
+
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인합니다.
     public bool IsNameInUse(string name, ClientConnection except)
     {
@@ -102,6 +117,21 @@ sealed class ClientRegistry
             // except로 전달된 클라이언트는 제외하고 복사합니다.
             return clients
                 .Where(client => client != except)
+                .ToArray();
+        }
+    }
+
+    // 특정 채팅방에 있는 접속자 목록의 복사본을 가져옵니다.
+    public ClientConnection[] SnapshotRoom(string roomName, ClientConnection? except = null)
+    {
+        // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+        lock (gate)
+        {
+            // 같은 방에 있고 제외 대상이 아닌 클라이언트만 복사합니다.
+            return clients
+                .Where(client =>
+                    client != except &&
+                    string.Equals(client.RoomName, roomName, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         }
     }

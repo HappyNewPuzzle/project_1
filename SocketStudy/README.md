@@ -77,7 +77,21 @@ dotnet run -- client 192.168.0.10 5000 alice
 
 ```text
 > /help
-< [notice] Commands: /help, /name <nickname>, /users, /time, /quit
+< [notice] Commands: /help, /name <nickname>, /users, /rooms, /join <room>, /time, /me <action>, /whisper <nickname> <message>, /quit
+```
+
+처음 접속하면 기본 채팅방 `lobby`에 들어갑니다. 다른 방으로 이동하려면 `/join`을 입력합니다.
+
+```text
+> /join study
+< [notice] Joined room: study
+```
+
+현재 존재하는 방 목록은 `/rooms`로 확인합니다.
+
+```text
+> /rooms
+< [notice] Rooms (2): lobby, study
 ```
 
 서버 시간을 확인하려면 `/time`을 입력합니다.
@@ -139,7 +153,7 @@ dotnet run -- client 6000
 2. 첫 번째 클라이언트 실행: `dotnet run -- client 5000 alice`
 3. 두 번째 클라이언트 실행: `dotnet run -- client 5000 bob`
 4. `alice` 터미널에서 `hello` 입력
-5. `bob` 터미널에도 `[chat] alice: hello`가 보이는지 확인
+5. `bob` 터미널에도 `[chat] [lobby] alice: hello`가 보이는지 확인
 6. 아무 클라이언트에서 `/users` 입력
 7. 한 클라이언트에서 `/quit` 입력
 8. 서버 터미널에서 `Ctrl+C`로 종료

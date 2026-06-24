@@ -6,6 +6,9 @@ sealed class ClientConnection
     // 클라이언트를 구분하기 위한 이름입니다.
     public string Name { get; private set; }
 
+    // 클라이언트가 현재 들어가 있는 채팅방 이름입니다.
+    public string RoomName { get; private set; } = "lobby";
+
     // 실제 TCP 연결 객체입니다.
     public TcpClient Client { get; }
 
@@ -58,5 +61,12 @@ sealed class ClientConnection
     {
         // 새 이름을 저장합니다.
         Name = name;
+    }
+
+    // 클라이언트가 속한 채팅방을 변경하는 메서드입니다.
+    public void MoveToRoom(string roomName)
+    {
+        // 새 채팅방 이름을 저장합니다.
+        RoomName = roomName;
     }
 }
