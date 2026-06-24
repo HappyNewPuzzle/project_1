@@ -1,5 +1,5 @@
 // 접속 중인 클라이언트 목록을 관리합니다.
-sealed class ClientRegistry
+public sealed class ClientRegistry
 {
     // 접속자 목록을 동시에 읽고 쓸 때 보호하기 위한 lock 객체입니다.
     private readonly object gate = new();

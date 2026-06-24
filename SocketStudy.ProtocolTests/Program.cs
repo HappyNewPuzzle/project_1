@@ -12,6 +12,10 @@ await RunTooLargeLengthTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
+await RunClientRegistryTracksCountAndNamesAsync();
+await RunClientRegistryFindsNamesCaseInsensitiveAsync();
+await RunClientRegistryFiltersRoomsAsync();
+await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
 await RunWhereCommandTestAsync();
 await RunJoinCommandTestAsync();
@@ -136,6 +140,117 @@ static void RunRemoteClientOptionParseTest()
     if (!parsed || host != "192.168.0.10" || port != 6500 || nickname != "bob")
     {
         throw new InvalidOperationException("Remote client options were not parsed correctly.");
+    }
+}
+
+static async Task RunClientRegistryTracksCountAndNamesAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+
+    int firstCount = registry.Add(bob);
+    int secondCount = registry.Add(alice);
+
+    if (firstCount != 1 || secondCount != 2 || registry.Count != 2)
+    {
+        throw new InvalidOperationException("ClientRegistry did not track add counts correctly.");
+    }
+
+    if (!registry.GetNames().SequenceEqual(["alice", "bob"]))
+    {
+        throw new InvalidOperationException("ClientRegistry did not return sorted client names.");
+    }
+
+    int remainingCount = registry.Remove(alice);
+    if (remainingCount != 1 || registry.Snapshot().Single() != bob)
+    {
+        throw new InvalidOperationException("ClientRegistry did not remove the expected client.");
+    }
+}
+
+static async Task RunClientRegistryFindsNamesCaseInsensitiveAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+
+    registry.Add(alice);
+    registry.Add(bob);
+
+    if (registry.FindByName("ALICE") != alice)
+    {
+        throw new InvalidOperationException("ClientRegistry did not find a client name case-insensitively.");
+    }
+
+    if (!registry.IsNameInUse("BOB", alice))
+    {
+        throw new InvalidOperationException("ClientRegistry did not detect a duplicate name.");
+    }
+
+    if (registry.IsNameInUse("ALICE", alice))
+    {
+        throw new InvalidOperationException("ClientRegistry should ignore the current connection when checking names.");
+    }
+}
+
+static async Task RunClientRegistryFiltersRoomsAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    await using NetworkPair claraPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+    var clara = new ClientConnection("clara", claraPair.Client, claraPair.ClientStream);
+
+    alice.MoveToRoom("study");
+    clara.MoveToRoom("study");
+    registry.Add(alice);
+    registry.Add(bob);
+    registry.Add(clara);
+
+    if (!registry.GetRoomNames().SequenceEqual(["lobby", "study"]))
+    {
+        throw new InvalidOperationException("ClientRegistry did not return sorted room names.");
+    }
+
+    if (!registry.GetNamesInRoom("STUDY").SequenceEqual(["alice", "clara"]))
+    {
+        throw new InvalidOperationException("ClientRegistry did not filter room users case-insensitively.");
+    }
+
+    if (registry.SnapshotRoom("study", alice).Single() != clara)
+    {
+        throw new InvalidOperationException("ClientRegistry did not snapshot a room with the expected exclusion.");
+    }
+}
+
+static async Task RunClientRegistryDrainsConnectionsAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+
+    registry.Add(alice);
+    registry.Add(bob);
+
+    ClientConnection[] drained = registry.Drain();
+
+    if (drained.Length != 2 || registry.Count != 0)
+    {
+        throw new InvalidOperationException("ClientRegistry did not drain all connections.");
+    }
+
+    if (!drained.Contains(alice) || !drained.Contains(bob))
+    {
+        throw new InvalidOperationException("ClientRegistry drain did not return the original connections.");
     }
 }
 
