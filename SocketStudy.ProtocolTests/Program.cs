@@ -19,6 +19,7 @@ await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
 await RunWhereCommandTestAsync();
 await RunPingCommandTestAsync();
+await RunTimeCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
@@ -304,6 +305,21 @@ static async Task RunPingCommandTestAsync()
     }
 }
 
+static async Task RunTimeCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.CurrentTime = new DateTimeOffset(2026, 6, 24, 10, 30, 0, TimeSpan.FromHours(9));
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/time"));
+
+    if (!handled || context.SentMessages.Single().Text != "Server time: 2026-06-24 10:30:00 +09:00")
+    {
+        throw new InvalidOperationException("/time did not return the injected server time.");
+    }
+}
+
 static async Task RunJoinCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -496,6 +512,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public string? DuplicateName { get; set; }
 
+    public DateTimeOffset CurrentTime { get; set; } = DateTimeOffset.UnixEpoch;
+
     private CommandHandlerTestContext(NetworkPair pair, string name)
     {
         this.pair = pair;
@@ -511,7 +529,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             roomName => roomName == "study" ? ["alice"] : [],
             IsNameInUse,
             FindClientByName,
-            MoveClientToRoomAsync);
+            MoveClientToRoomAsync,
+            () => CurrentTime);
     }
 
     public static async Task<CommandHandlerTestContext> CreateAsync(string name)

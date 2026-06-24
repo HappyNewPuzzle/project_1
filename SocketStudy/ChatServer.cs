@@ -23,7 +23,8 @@ sealed class ChatServer
             clients.GetNamesInRoom,
             clients.IsNameInUse,
             clients.FindByName,
-            MoveClientToRoomAsync);
+            MoveClientToRoomAsync,
+            () => DateTimeOffset.Now);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

@@ -31,6 +31,9 @@ public sealed class ChatCommandHandler
     // 클라이언트를 다른 채팅방으로 이동시키는 함수입니다.
     private readonly Func<ClientConnection, string, Task> moveClientToRoomAsync;
 
+    // 현재 서버 시간을 가져오는 함수입니다.
+    private readonly Func<DateTimeOffset> getCurrentTime;
+
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
@@ -41,7 +44,8 @@ public sealed class ChatCommandHandler
         Func<string, string[]> getClientNamesInRoom,
         Func<string, ClientConnection, bool> isNameInUse,
         Func<string, ClientConnection?> findClientByName,
-        Func<ClientConnection, string, Task> moveClientToRoomAsync)
+        Func<ClientConnection, string, Task> moveClientToRoomAsync,
+        Func<DateTimeOffset> getCurrentTime)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -61,6 +65,8 @@ public sealed class ChatCommandHandler
         this.findClientByName = findClientByName;
         // 채팅방 이동 함수를 저장합니다.
         this.moveClientToRoomAsync = moveClientToRoomAsync;
+        // 현재 시간 조회 함수를 저장합니다.
+        this.getCurrentTime = getCurrentTime;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -159,7 +165,7 @@ public sealed class ChatCommandHandler
         if (message.Text.Equals("/time", StringComparison.OrdinalIgnoreCase))
         {
             // 서버 시간을 ISO-8601 형식으로 만들어 보낸 사람에게만 알려줍니다.
-            string serverTime = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz");
+            string serverTime = getCurrentTime().ToString("yyyy-MM-dd HH:mm:ss zzz");
             // 서버 시간을 notice 메시지로 전송합니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Server time: {serverTime}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
