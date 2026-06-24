@@ -16,6 +16,10 @@ await RunHelpCommandTestAsync();
 await RunWhereCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
+await RunRoomUsersCommandTestAsync();
+await RunMeCommandTestAsync();
+await RunWhisperCommandTestAsync();
+await RunDuplicateNameCommandTestAsync();
 
 Console.WriteLine("All protocol tests passed.");
 
@@ -203,6 +207,81 @@ static async Task RunInvalidRoomNameCommandTestAsync()
     }
 }
 
+static async Task RunRoomUsersCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.MoveToRoom("study");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/room-users"));
+
+    if (!handled || context.SentMessages.Single().Text != "Users in study (1): alice")
+    {
+        throw new InvalidOperationException("/room-users did not report users in the current room.");
+    }
+}
+
+static async Task RunMeCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/me waves"));
+
+    if (!handled || context.BroadcastMessages.Single().Text != "* alice waves")
+    {
+        throw new InvalidOperationException("/me did not broadcast the expected action message.");
+    }
+}
+
+static async Task RunWhisperCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/whisper bob hello"));
+
+    if (!handled || context.SentMessages.Count != 2)
+    {
+        throw new InvalidOperationException("/whisper should send one notice to the target and one to the sender.");
+    }
+
+    if (context.SentMessages[0].Connection != context.TargetConnection ||
+        context.SentMessages[0].Text != "whisper from alice: hello")
+    {
+        throw new InvalidOperationException("/whisper did not send the expected target notice.");
+    }
+
+    if (context.SentMessages[1].Connection != context.Connection ||
+        context.SentMessages[1].Text != "whisper to bob: hello")
+    {
+        throw new InvalidOperationException("/whisper did not send the expected sender confirmation.");
+    }
+}
+
+static async Task RunDuplicateNameCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.DuplicateName = "bob";
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/name bob"));
+
+    if (!handled || context.Connection.Name != "alice")
+    {
+        throw new InvalidOperationException("Duplicate /name should not rename the client.");
+    }
+
+    if (context.SentMessages.Single().Text != "Nickname is already in use: bob")
+    {
+        throw new InvalidOperationException("Duplicate /name did not return the expected notice.");
+    }
+}
+
 static async Task AssertThrowsAsync<TException>(Func<Task> action, string failureMessage)
     where TException : Exception
 {
@@ -267,32 +346,41 @@ sealed class NetworkPair : IAsyncDisposable
 
 sealed record SentMessage(ClientConnection Connection, MessageType Type, string Text);
 
+sealed record BroadcastMessage(ClientConnection Connection, string Text);
+
 sealed class CommandHandlerTestContext : IAsyncDisposable
 {
     private readonly NetworkPair pair;
 
     public ClientConnection Connection { get; }
 
+    public ClientConnection TargetConnection { get; }
+
     public ChatCommandHandler Handler { get; }
 
     public List<SentMessage> SentMessages { get; } = new();
 
+    public List<BroadcastMessage> BroadcastMessages { get; } = new();
+
     public List<string> MovedRooms { get; } = new();
+
+    public string? DuplicateName { get; set; }
 
     private CommandHandlerTestContext(NetworkPair pair, string name)
     {
         this.pair = pair;
         Connection = new ClientConnection(name, pair.Client, pair.ClientStream);
+        TargetConnection = new ClientConnection("bob", pair.Server, pair.ServerStream);
 
         Handler = new ChatCommandHandler(
             SendToClientAsync,
             _ => Task.CompletedTask,
-            (_, _) => Task.CompletedTask,
+            BroadcastChatAsync,
             () => ["alice", "bob"],
             () => ["lobby", "study"],
             roomName => roomName == "study" ? ["alice"] : [],
-            (_, _) => false,
-            _ => null,
+            IsNameInUse,
+            FindClientByName,
             MoveClientToRoomAsync);
     }
 
@@ -311,6 +399,24 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     {
         SentMessages.Add(new SentMessage(connection, type, text));
         return Task.CompletedTask;
+    }
+
+    private Task BroadcastChatAsync(ClientConnection connection, string text)
+    {
+        BroadcastMessages.Add(new BroadcastMessage(connection, text));
+        return Task.CompletedTask;
+    }
+
+    private bool IsNameInUse(string name, ClientConnection currentConnection)
+    {
+        return string.Equals(name, DuplicateName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private ClientConnection? FindClientByName(string name)
+    {
+        return string.Equals(name, TargetConnection.Name, StringComparison.OrdinalIgnoreCase)
+            ? TargetConnection
+            : null;
     }
 
     private Task MoveClientToRoomAsync(ClientConnection connection, string roomName)
