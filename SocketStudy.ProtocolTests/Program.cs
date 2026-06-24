@@ -23,6 +23,7 @@ await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunJoinCommandTestAsync();
+await RunLeaveCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
 await RunMeCommandTestAsync();
@@ -364,6 +365,21 @@ static async Task RunJoinCommandTestAsync()
     if (!handled || context.MovedRooms.Single() != "study")
     {
         throw new InvalidOperationException("/join did not request a room move.");
+    }
+}
+
+static async Task RunLeaveCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.MoveToRoom("study");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/leave"));
+
+    if (!handled || context.MovedRooms.Single() != "lobby")
+    {
+        throw new InvalidOperationException("/leave did not request a move to lobby.");
     }
 }
 

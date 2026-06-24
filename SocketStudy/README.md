@@ -84,7 +84,7 @@ dotnet run -- client 192.168.0.10 5000 alice
 
 ```text
 > /help
-< [notice] Commands: /help, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
+< [notice] Commands: /help, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
 ```
 
 처음 접속하면 기본 채팅방 `lobby`에 들어갑니다. 다른 방으로 이동하려면 `/join`을 입력합니다.
@@ -95,6 +95,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 ```
 
 방 이름은 20자 이하이며 영문, 숫자, `-`, `_`만 사용할 수 있습니다.
+
+기본 방인 `lobby`로 돌아가려면 `/leave`를 입력합니다.
+
+```text
+> /leave
+< [notice] Joined room: lobby
+```
 
 현재 존재하는 방 목록은 `/rooms`로 확인합니다.
 

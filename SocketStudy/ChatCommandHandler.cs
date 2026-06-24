@@ -100,7 +100,7 @@ public sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -154,6 +154,15 @@ public sealed class ChatCommandHandler
             string roomName = message.Text["/join ".Length..].Trim();
             // 채팅방 이동을 처리합니다.
             await JoinRoomAsync(connection, roomName);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /leave 명령은 기본 방인 lobby로 돌아갑니다.
+        if (message.Text.Equals("/leave", StringComparison.OrdinalIgnoreCase))
+        {
+            // lobby로 이동하는 동작은 /join과 같은 메서드를 재사용합니다.
+            await JoinRoomAsync(connection, "lobby");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
