@@ -21,6 +21,7 @@ await RunWhereCommandTestAsync();
 await RunPingCommandTestAsync();
 await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
+await RunWhoAmICommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
@@ -334,6 +335,21 @@ static async Task RunUptimeCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Server uptime: 00:05:07")
     {
         throw new InvalidOperationException("/uptime did not return the expected elapsed time.");
+    }
+}
+
+static async Task RunWhoAmICommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.MoveToRoom("study");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/whoami"));
+
+    if (!handled || context.SentMessages.Single().Text != "You are alice in room study.")
+    {
+        throw new InvalidOperationException("/whoami did not return the current client identity.");
     }
 }
 

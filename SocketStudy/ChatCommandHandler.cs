@@ -100,7 +100,7 @@ public sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -112,6 +112,15 @@ public sealed class ChatCommandHandler
             string[] names = getClientNames();
             // 접속자 목록을 보낸 사람에게만 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Online users ({names.Length}): {string.Join(", ", names)}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /whoami 명령은 내 닉네임과 현재 방을 보여줍니다.
+        if (message.Text.Equals("/whoami", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 현재 연결 상태를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"You are {connection.Name} in room {connection.RoomName}.");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
