@@ -29,6 +29,7 @@ await RunJoinCommandTestAsync();
 await RunLeaveCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
+await RunStatsCommandTestAsync();
 await RunMeCommandTestAsync();
 await RunWhisperCommandTestAsync();
 await RunRenameCommandTestAsync();
@@ -474,6 +475,21 @@ static async Task RunRoomUsersCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Users in study (1): alice")
     {
         throw new InvalidOperationException("/room-users did not report users in the current room.");
+    }
+}
+
+static async Task RunStatsCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.MoveToRoom("study");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/stats"));
+
+    if (!handled || context.SentMessages.Single().Text != "Stats: users=2, rooms=2, current-room-users=1")
+    {
+        throw new InvalidOperationException("/stats did not return the expected summary.");
     }
 }
 

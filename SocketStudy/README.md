@@ -90,7 +90,7 @@ dotnet run -- client 192.168.0.10 5000 alice
 
 ```text
 > /help
-< [notice] Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
+< [notice] Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
 ```
 
 처음 접속하면 기본 채팅방 `lobby`에 들어갑니다. 다른 방으로 이동하려면 `/join`을 입력합니다.
@@ -121,6 +121,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 ```text
 > /room-users
 < [notice] Users in study (2): alice, bob
+```
+
+서버 상태 요약은 `/stats`로 확인합니다.
+
+```text
+> /stats
+< [notice] Stats: users=2, rooms=2, current-room-users=2
 ```
 
 현재 내가 있는 방은 `/where`로 확인합니다.

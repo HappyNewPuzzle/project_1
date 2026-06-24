@@ -3,7 +3,7 @@ public sealed class ChatCommandHandler
 {
     // 방 이름에 허용할 문자 집합입니다.
     // 사용자에게 보여줄 명령 목록입니다.
-    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
+    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -156,6 +156,21 @@ public sealed class ChatCommandHandler
             string[] names = getClientNamesInRoom(connection.RoomName);
             // 방 접속자 목록을 보낸 사람에게만 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Users in {connection.RoomName} ({names.Length}): {string.Join(", ", names)}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /stats 명령은 서버와 현재 방의 간단한 상태를 보여줍니다.
+        if (message.Text.Equals("/stats", StringComparison.OrdinalIgnoreCase))
+        {
+            // 전체 접속자 수를 가져옵니다.
+            int userCount = getClientNames().Length;
+            // 현재 방 수를 가져옵니다.
+            int roomCount = getRoomNames().Length;
+            // 현재 방의 접속자 수를 가져옵니다.
+            int currentRoomUserCount = getClientNamesInRoom(connection.RoomName).Length;
+            // 요약 정보를 보낸 사람에게만 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Stats: users={userCount}, rooms={roomCount}, current-room-users={currentRoomUserCount}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
