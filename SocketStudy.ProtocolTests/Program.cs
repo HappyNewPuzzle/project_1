@@ -31,6 +31,7 @@ await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
 await RunMeCommandTestAsync();
 await RunWhisperCommandTestAsync();
+await RunRenameCommandTestAsync();
 await RunDuplicateNameCommandTestAsync();
 await RunInvalidNameCommandTestAsync();
 
@@ -516,6 +517,41 @@ static async Task RunWhisperCommandTestAsync()
     }
 }
 
+static async Task RunRenameCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    TextWriter originalOutput = Console.Out;
+    using var capturedOutput = new StringWriter();
+
+    bool handled;
+    try
+    {
+        Console.SetOut(capturedOutput);
+        handled = await context.Handler.TryHandleAsync(
+            context.Connection,
+            new NetworkMessage(MessageType.Command, "/rename clara"));
+    }
+    finally
+    {
+        Console.SetOut(originalOutput);
+    }
+
+    if (!handled || context.Connection.Name != "clara")
+    {
+        throw new InvalidOperationException("/rename did not rename the client.");
+    }
+
+    if (context.BroadcastNotices.Single() != "alice is now clara")
+    {
+        throw new InvalidOperationException("/rename did not broadcast the expected notice.");
+    }
+
+    if (!capturedOutput.ToString().Contains("[server] alice is now clara"))
+    {
+        throw new InvalidOperationException("/rename did not log the expected rename message.");
+    }
+}
+
 static async Task RunDuplicateNameCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -635,6 +671,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public List<BroadcastMessage> BroadcastMessages { get; } = new();
 
+    public List<string> BroadcastNotices { get; } = new();
+
     public List<string> MovedRooms { get; } = new();
 
     public string? DuplicateName { get; set; }
@@ -651,7 +689,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
         Handler = new ChatCommandHandler(
             SendToClientAsync,
-            _ => Task.CompletedTask,
+            BroadcastNoticeAsync,
             BroadcastChatAsync,
             () => ["alice", "bob"],
             () => ["lobby", "study"],
@@ -683,6 +721,12 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     private Task BroadcastChatAsync(ClientConnection connection, string text)
     {
         BroadcastMessages.Add(new BroadcastMessage(connection, text));
+        return Task.CompletedTask;
+    }
+
+    private Task BroadcastNoticeAsync(string text)
+    {
+        BroadcastNotices.Add(text);
         return Task.CompletedTask;
     }
 

@@ -64,6 +64,12 @@ dotnet run -- client 192.168.0.10 5000 alice
 > /name bob
 ```
 
+같은 기능을 `/rename`으로도 사용할 수 있습니다.
+
+```text
+> /rename bob
+```
+
 닉네임은 20자 이하이어야 하며 영문, 숫자, `-`, `_`만 사용할 수 있습니다. 이미 접속 중인 다른 클라이언트와 같은 이름은 사용할 수 없습니다.
 
 내 닉네임과 현재 방을 확인하려면 `/whoami`를 입력합니다.
@@ -84,7 +90,7 @@ dotnet run -- client 192.168.0.10 5000 alice
 
 ```text
 > /help
-< [notice] Commands: /help, /commands, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
+< [notice] Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
 ```
 
 처음 접속하면 기본 채팅방 `lobby`에 들어갑니다. 다른 방으로 이동하려면 `/join`을 입력합니다.

@@ -3,7 +3,7 @@ public sealed class ChatCommandHandler
 {
     // 방 이름에 허용할 문자 집합입니다.
     // 사용자에게 보여줄 명령 목록입니다.
-    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
+    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -91,6 +91,17 @@ public sealed class ChatCommandHandler
         {
             // 명령 뒤쪽의 닉네임 부분만 잘라냅니다.
             string requestedName = message.Text["/name ".Length..].Trim();
+            // 닉네임 변경을 처리합니다.
+            await ChangeClientNameAsync(connection, requestedName);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /rename 명령은 /name과 같은 닉네임 변경 별칭입니다.
+        if (message.Text.StartsWith("/rename ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 명령 뒤쪽의 닉네임 부분만 잘라냅니다.
+            string requestedName = message.Text["/rename ".Length..].Trim();
             // 닉네임 변경을 처리합니다.
             await ChangeClientNameAsync(connection, requestedName);
             // 명령을 처리했다고 호출자에게 알려줍니다.
