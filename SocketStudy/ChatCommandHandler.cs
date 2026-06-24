@@ -1,6 +1,9 @@
 // slash command 해석과 처리를 담당합니다.
 sealed class ChatCommandHandler
 {
+    // 방 이름에 허용할 문자 집합입니다.
+    private const string AllowedRoomNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
+
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
 
@@ -221,8 +224,24 @@ sealed class ChatCommandHandler
             return;
         }
 
+        // 방 이름은 명령 파싱이 쉬운 문자만 허용합니다.
+        if (!IsValidRoomName(roomName))
+        {
+            // 보낸 사람에게만 실패 이유를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, "Room name can contain only letters, numbers, '-' and '_'.");
+            // 메서드를 종료합니다.
+            return;
+        }
+
         // 서버에게 실제 이동을 요청합니다.
         await moveClientToRoomAsync(connection, roomName);
+    }
+
+    // 방 이름이 허용된 문자로만 이루어졌는지 확인합니다.
+    private static bool IsValidRoomName(string roomName)
+    {
+        // 모든 문자가 허용된 문자 집합 안에 있는지 확인합니다.
+        return roomName.All(character => AllowedRoomNameCharacters.Contains(character));
     }
 
     // 특정 클라이언트에게만 개인 메시지를 보냅니다.

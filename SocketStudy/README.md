@@ -87,6 +87,8 @@ dotnet run -- client 192.168.0.10 5000 alice
 < [notice] Joined room: study
 ```
 
+방 이름은 20자 이하이며 영문, 숫자, `-`, `_`만 사용할 수 있습니다.
+
 현재 존재하는 방 목록은 `/rooms`로 확인합니다.
 
 ```text
