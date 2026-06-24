@@ -77,7 +77,14 @@ dotnet run -- client 192.168.0.10 5000 alice
 
 ```text
 > /help
-< [notice] Commands: /help, /name <nickname>, /users, /quit
+< [notice] Commands: /help, /name <nickname>, /users, /time, /quit
+```
+
+서버 시간을 확인하려면 `/time`을 입력합니다.
+
+```text
+> /time
+< [notice] Server time: 2026-06-24 10:30:00 +09:00
 ```
 
 명시적으로 나가고 싶으면 `/quit`을 입력합니다.

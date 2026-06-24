@@ -55,7 +55,7 @@ sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /time, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -67,6 +67,17 @@ sealed class ChatCommandHandler
             string[] names = getClientNames();
             // 접속자 목록을 보낸 사람에게만 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Online users ({names.Length}): {string.Join(", ", names)}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /time 명령은 서버의 현재 시간을 보여줍니다.
+        if (message.Text.Equals("/time", StringComparison.OrdinalIgnoreCase))
+        {
+            // 서버 시간을 ISO-8601 형식으로 만들어 보낸 사람에게만 알려줍니다.
+            string serverTime = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz");
+            // 서버 시간을 notice 메시지로 전송합니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Server time: {serverTime}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

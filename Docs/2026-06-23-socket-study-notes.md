@@ -306,6 +306,7 @@ public sealed record NetworkMessage(MessageType Type, string Text);
 | `/help` | 사용 가능한 명령 목록 보기 |
 | `/name <nickname>` | 닉네임 변경 |
 | `/users` | 현재 접속자 목록 보기 |
+| `/time` | 서버 현재 시간 보기 |
 | `/quit` | 서버에 종료 의사를 보내고 연결 종료 |
 
 명령은 `MessageType.Command`로 전송됩니다.
@@ -515,7 +516,7 @@ git show 6acd390
 2. 클라이언트 두 개를 띄우고 `/users` 결과 확인하기
 3. 같은 닉네임을 두 번 설정해보고 거부되는지 확인하기
 4. `MessageType`에 `Ping = 4`를 추가해보기
-5. `/time` 명령을 추가해서 서버 시간이 나오게 해보기
+5. `/time` 명령이 어느 파일에서 처리되는지 찾아보기
 6. `AppLogger` 로그 파일을 열어서 접속/퇴장 기록 확인하기
 7. `SocketStudy.ProtocolTests`에 `/help` 명령 parsing 테스트 추가하기
 
