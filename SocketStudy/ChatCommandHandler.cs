@@ -1,5 +1,5 @@
 // slash command 해석과 처리를 담당합니다.
-sealed class ChatCommandHandler
+public sealed class ChatCommandHandler
 {
     // 방 이름에 허용할 문자 집합입니다.
     private const string AllowedRoomNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";

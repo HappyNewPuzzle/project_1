@@ -12,6 +12,10 @@ await RunTooLargeLengthTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
+await RunHelpCommandTestAsync();
+await RunWhereCommandTestAsync();
+await RunJoinCommandTestAsync();
+await RunInvalidRoomNameCommandTestAsync();
 
 Console.WriteLine("All protocol tests passed.");
 
@@ -131,6 +135,74 @@ static void RunRemoteClientOptionParseTest()
     }
 }
 
+static async Task RunHelpCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/help"));
+
+    if (!handled || context.SentMessages.Count != 1)
+    {
+        throw new InvalidOperationException("Expected /help to send one notice message.");
+    }
+
+    SentMessage sent = context.SentMessages[0];
+    if (sent.Type != MessageType.Notice || !sent.Text.Contains("/join <room>"))
+    {
+        throw new InvalidOperationException("/help output did not include expected command list.");
+    }
+}
+
+static async Task RunWhereCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.MoveToRoom("study");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/where"));
+
+    if (!handled || context.SentMessages.Single().Text != "Current room: study")
+    {
+        throw new InvalidOperationException("/where did not report the current room.");
+    }
+}
+
+static async Task RunJoinCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/join study"));
+
+    if (!handled || context.MovedRooms.Single() != "study")
+    {
+        throw new InvalidOperationException("/join did not request a room move.");
+    }
+}
+
+static async Task RunInvalidRoomNameCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/join bad room"));
+
+    if (!handled || context.MovedRooms.Count != 0)
+    {
+        throw new InvalidOperationException("Invalid room name should not move the client.");
+    }
+
+    if (!context.SentMessages.Single().Text.Contains("Room name can contain only"))
+    {
+        throw new InvalidOperationException("Invalid room name did not return the expected notice.");
+    }
+}
+
 static async Task AssertThrowsAsync<TException>(Func<Task> action, string failureMessage)
     where TException : Exception
 {
@@ -190,5 +262,61 @@ sealed class NetworkPair : IAsyncDisposable
         Client.Dispose();
         Server.Dispose();
         listener.Stop();
+    }
+}
+
+sealed record SentMessage(ClientConnection Connection, MessageType Type, string Text);
+
+sealed class CommandHandlerTestContext : IAsyncDisposable
+{
+    private readonly NetworkPair pair;
+
+    public ClientConnection Connection { get; }
+
+    public ChatCommandHandler Handler { get; }
+
+    public List<SentMessage> SentMessages { get; } = new();
+
+    public List<string> MovedRooms { get; } = new();
+
+    private CommandHandlerTestContext(NetworkPair pair, string name)
+    {
+        this.pair = pair;
+        Connection = new ClientConnection(name, pair.Client, pair.ClientStream);
+
+        Handler = new ChatCommandHandler(
+            SendToClientAsync,
+            _ => Task.CompletedTask,
+            (_, _) => Task.CompletedTask,
+            () => ["alice", "bob"],
+            () => ["lobby", "study"],
+            roomName => roomName == "study" ? ["alice"] : [],
+            (_, _) => false,
+            _ => null,
+            MoveClientToRoomAsync);
+    }
+
+    public static async Task<CommandHandlerTestContext> CreateAsync(string name)
+    {
+        NetworkPair pair = await NetworkPair.ConnectAsync();
+        return new CommandHandlerTestContext(pair, name);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await pair.DisposeAsync();
+    }
+
+    private Task SendToClientAsync(ClientConnection connection, MessageType type, string text)
+    {
+        SentMessages.Add(new SentMessage(connection, type, text));
+        return Task.CompletedTask;
+    }
+
+    private Task MoveClientToRoomAsync(ClientConnection connection, string roomName)
+    {
+        MovedRooms.Add(roomName);
+        connection.MoveToRoom(roomName);
+        return Task.CompletedTask;
     }
 }
