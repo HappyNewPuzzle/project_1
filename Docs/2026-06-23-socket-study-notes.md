@@ -308,6 +308,7 @@ public sealed record NetworkMessage(MessageType Type, string Text);
 | `/users` | 현재 접속자 목록 보기 |
 | `/rooms` | 현재 존재하는 채팅방 목록 보기 |
 | `/join <room>` | 다른 채팅방으로 이동 |
+| `/where` | 현재 내가 속한 채팅방 보기 |
 | `/time` | 서버 현재 시간 보기 |
 | `/me <action>` | 행동 메시지를 전체 채팅으로 보내기 |
 | `/whisper <nickname> <message>` | 특정 사용자에게만 메시지 보내기 |

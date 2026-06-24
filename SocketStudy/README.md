@@ -94,6 +94,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 < [notice] Rooms (2): lobby, study
 ```
 
+현재 내가 있는 방은 `/where`로 확인합니다.
+
+```text
+> /where
+< [notice] Current room: study
+```
+
 서버 시간을 확인하려면 `/time`을 입력합니다.
 
 ```text
