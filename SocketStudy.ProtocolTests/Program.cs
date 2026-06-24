@@ -17,6 +17,7 @@ await RunClientRegistryFindsNamesCaseInsensitiveAsync();
 await RunClientRegistryFiltersRoomsAsync();
 await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
+await RunCommandsAliasTestAsync();
 await RunWhereCommandTestAsync();
 await RunPingCommandTestAsync();
 await RunTimeCommandTestAsync();
@@ -276,6 +277,20 @@ static async Task RunHelpCommandTestAsync()
     if (sent.Type != MessageType.Notice || !sent.Text.Contains("/join <room>"))
     {
         throw new InvalidOperationException("/help output did not include expected command list.");
+    }
+}
+
+static async Task RunCommandsAliasTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/commands"));
+
+    if (!handled || !context.SentMessages.Single().Text.Contains("/commands"))
+    {
+        throw new InvalidOperationException("/commands did not return the command list.");
     }
 }
 

@@ -4,6 +4,9 @@ public sealed class ChatCommandHandler
     // 방 이름에 허용할 문자 집합입니다.
     private const string AllowedRoomNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
 
+    // 사용자에게 보여줄 명령 목록입니다.
+    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
+
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
 
@@ -97,10 +100,11 @@ public sealed class ChatCommandHandler
         }
 
         // /help 명령은 사용할 수 있는 명령 목록을 보여줍니다.
-        if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
+        if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase) ||
+            message.Text.Equals("/commands", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /whoami, /users, /rooms, /room-users, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, CommandList);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
