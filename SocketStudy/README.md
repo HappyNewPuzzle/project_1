@@ -87,6 +87,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 < [notice] Server time: 2026-06-24 10:30:00 +09:00
 ```
 
+특정 사용자에게만 메시지를 보내려면 `/whisper`를 입력합니다.
+
+```text
+> /whisper bob 안녕하세요
+< [notice] whisper to bob: 안녕하세요
+```
+
 명시적으로 나가고 싶으면 `/quit`을 입력합니다.
 
 ```text

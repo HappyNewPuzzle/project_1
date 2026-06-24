@@ -13,12 +13,16 @@ sealed class ChatCommandHandler
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 함수입니다.
     private readonly Func<string, ClientConnection, bool> isNameInUse;
 
+    // 이름으로 클라이언트를 찾는 함수입니다.
+    private readonly Func<string, ClientConnection?> findClientByName;
+
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
         Func<string, Task> broadcastNoticeAsync,
         Func<string[]> getClientNames,
-        Func<string, ClientConnection, bool> isNameInUse)
+        Func<string, ClientConnection, bool> isNameInUse,
+        Func<string, ClientConnection?> findClientByName)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -28,6 +32,8 @@ sealed class ChatCommandHandler
         this.getClientNames = getClientNames;
         // 이름 중복 확인 함수를 저장합니다.
         this.isNameInUse = isNameInUse;
+        // 이름 기반 클라이언트 조회 함수를 저장합니다.
+        this.findClientByName = findClientByName;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -55,7 +61,7 @@ sealed class ChatCommandHandler
         if (message.Text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 명령 목록을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /time, /quit");
+            await sendToClientAsync(connection, MessageType.Notice, "Commands: /help, /name <nickname>, /users, /time, /whisper <nickname> <message>, /quit");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -82,6 +88,15 @@ sealed class ChatCommandHandler
             return true;
         }
 
+        // /whisper 명령은 특정 클라이언트에게만 메시지를 보냅니다.
+        if (message.Text.StartsWith("/whisper ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 개인 메시지 명령을 처리합니다.
+            await SendWhisperAsync(connection, message.Text);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
         // /quit 명령은 클라이언트가 서버에 연결 종료 의사를 명확히 전달하는 명령입니다.
         if (message.Text.Equals("/quit", StringComparison.OrdinalIgnoreCase))
         {
@@ -97,6 +112,43 @@ sealed class ChatCommandHandler
         await sendToClientAsync(connection, MessageType.Notice, $"Unknown command: {message.Text}");
         // 명령을 처리했다고 호출자에게 알려줍니다.
         return true;
+    }
+
+    // 특정 클라이언트에게만 개인 메시지를 보냅니다.
+    private async Task SendWhisperAsync(ClientConnection sender, string commandText)
+    {
+        // "/whisper " 뒤쪽의 대상 이름과 메시지 본문을 가져옵니다.
+        string payload = commandText["/whisper ".Length..].Trim();
+        // 첫 번째 공백을 기준으로 대상 닉네임과 본문을 나눕니다.
+        int separatorIndex = payload.IndexOf(' ');
+        // 대상 또는 본문이 빠졌으면 사용법을 안내합니다.
+        if (separatorIndex <= 0 || separatorIndex == payload.Length - 1)
+        {
+            // 보낸 사람에게만 사용법을 알려줍니다.
+            await sendToClientAsync(sender, MessageType.Notice, "Usage: /whisper <nickname> <message>");
+            // 메서드를 종료합니다.
+            return;
+        }
+
+        // 개인 메시지를 받을 대상 닉네임입니다.
+        string targetName = payload[..separatorIndex].Trim();
+        // 개인 메시지 본문입니다.
+        string whisperText = payload[(separatorIndex + 1)..].Trim();
+        // 대상 닉네임으로 현재 접속자를 찾습니다.
+        ClientConnection? target = findClientByName(targetName);
+        // 대상이 없으면 보낸 사람에게 실패를 알려줍니다.
+        if (target is null)
+        {
+            // 대상 사용자를 찾지 못했다는 안내를 보냅니다.
+            await sendToClientAsync(sender, MessageType.Notice, $"User not found: {targetName}");
+            // 메서드를 종료합니다.
+            return;
+        }
+
+        // 대상 클라이언트에게 개인 메시지를 보냅니다.
+        await sendToClientAsync(target, MessageType.Notice, $"whisper from {sender.Name}: {whisperText}");
+        // 보낸 사람에게도 전송 완료를 보여줍니다.
+        await sendToClientAsync(sender, MessageType.Notice, $"whisper to {target.Name}: {whisperText}");
     }
 
     // 클라이언트 닉네임을 변경합니다.

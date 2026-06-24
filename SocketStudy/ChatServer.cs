@@ -18,7 +18,8 @@ sealed class ChatServer
             SendToClientAsync,
             message => BroadcastServerNoticeAsync(message),
             clients.GetNames,
-            clients.IsNameInUse);
+            clients.IsNameInUse,
+            clients.FindByName);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

@@ -74,6 +74,18 @@ sealed class ClientRegistry
         }
     }
 
+    // 이름으로 접속 중인 클라이언트를 찾습니다.
+    public ClientConnection? FindByName(string name)
+    {
+        // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+        lock (gate)
+        {
+            // 대소문자를 구분하지 않고 이름이 같은 클라이언트를 찾습니다.
+            return clients.FirstOrDefault(client =>
+                string.Equals(client.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     // 현재 접속자 목록의 복사본을 가져옵니다.
     public ClientConnection[] Snapshot(ClientConnection? except = null)
     {
