@@ -153,15 +153,32 @@ static void RunRemoteClientOptionParseTest()
 
 static void RunInvalidClientNicknameOptionParseTest()
 {
-    bool parsed = CommandLineOptions.TryReadClientOptions(
-        ["client", "6500", "bad name"],
-        out _,
-        out _,
-        out _);
+    TextWriter originalOutput = Console.Out;
+    using var capturedOutput = new StringWriter();
 
-    if (parsed)
+    try
     {
-        throw new InvalidOperationException("Invalid client nickname option should not be parsed successfully.");
+        Console.SetOut(capturedOutput);
+
+        bool parsed = CommandLineOptions.TryReadClientOptions(
+            ["client", "6500", "bad name"],
+            out _,
+            out _,
+            out _);
+
+        if (parsed)
+        {
+            throw new InvalidOperationException("Invalid client nickname option should not be parsed successfully.");
+        }
+    }
+    finally
+    {
+        Console.SetOut(originalOutput);
+    }
+
+    if (!capturedOutput.ToString().Contains(NameRules.NicknameCharacterRuleMessage))
+    {
+        throw new InvalidOperationException("Invalid client nickname option did not print the expected message.");
     }
 }
 
