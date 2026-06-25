@@ -144,10 +144,8 @@ public sealed class ChatCommandHandler
         }
 
         // /name 명령에 닉네임이 빠지면 사용법을 안내합니다.
-        if (message.Text.Equals("/name", StringComparison.OrdinalIgnoreCase))
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/name", NameUsage))
         {
-            // 보낸 사람에게만 사용법을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, NameUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -164,10 +162,8 @@ public sealed class ChatCommandHandler
         }
 
         // /rename 명령에 닉네임이 빠지면 사용법을 안내합니다.
-        if (message.Text.Equals("/rename", StringComparison.OrdinalIgnoreCase))
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/rename", RenameUsage))
         {
-            // 보낸 사람에게만 사용법을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, RenameUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -260,10 +256,8 @@ public sealed class ChatCommandHandler
         }
 
         // /join 명령에 방 이름이 빠지면 사용법을 안내합니다.
-        if (message.Text.Equals("/join", StringComparison.OrdinalIgnoreCase))
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/join", JoinUsage))
         {
-            // 보낸 사람에게만 사용법을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, JoinUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -316,10 +310,8 @@ public sealed class ChatCommandHandler
         }
 
         // /echo 명령에 본문이 빠지면 사용법을 안내합니다.
-        if (message.Text.Equals("/echo", StringComparison.OrdinalIgnoreCase))
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/echo", EchoUsage))
         {
-            // 보낸 사람에게만 사용법을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, EchoUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -367,10 +359,8 @@ public sealed class ChatCommandHandler
         }
 
         // /me 명령에 행동 본문이 빠지면 사용법을 안내합니다.
-        if (message.Text.Equals("/me", StringComparison.OrdinalIgnoreCase))
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/me", MeUsage))
         {
-            // 보낸 사람에게만 사용법을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, MeUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -385,10 +375,8 @@ public sealed class ChatCommandHandler
         }
 
         // /whisper 명령에 대상이나 본문이 빠지면 사용법을 안내합니다.
-        if (message.Text.Equals("/whisper", StringComparison.OrdinalIgnoreCase))
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/whisper", WhisperUsage))
         {
-            // 보낸 사람에게만 사용법을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, WhisperUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -449,6 +437,26 @@ public sealed class ChatCommandHandler
     {
         // 모든 문자가 허용된 문자 집합 안에 있는지 확인합니다.
         return NameRules.HasOnlyAllowedCharacters(roomName);
+    }
+
+    // 인자 없이 명령만 입력된 경우 사용법을 보냅니다.
+    private async Task<bool> SendUsageIfExactCommandAsync(
+        ClientConnection connection,
+        string text,
+        string command,
+        string usage)
+    {
+        // 정확히 해당 명령만 입력된 경우가 아니면 처리하지 않습니다.
+        if (!text.Equals(command, StringComparison.OrdinalIgnoreCase))
+        {
+            // 호출자가 다음 명령 처리를 계속하도록 false를 반환합니다.
+            return false;
+        }
+
+        // 보낸 사람에게만 사용법을 알려줍니다.
+        await sendToClientAsync(connection, MessageType.Notice, usage);
+        // 명령을 처리했다고 호출자에게 알려줍니다.
+        return true;
     }
 
     // 서버 실행 시간을 화면에 보여주기 좋은 문자열로 바꿉니다.
