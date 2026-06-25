@@ -650,7 +650,7 @@ static async Task RunVersionCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/version"));
 
-    if (!handled || context.SentMessages.Single().Text != ChatCommandHandler.VersionMessage)
+    if (!handled || context.SentMessages.Single().Text != ServerInfo.VersionMessage)
     {
         throw new InvalidOperationException("/version did not return the expected message.");
     }
