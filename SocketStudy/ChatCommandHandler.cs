@@ -42,6 +42,12 @@ public sealed class ChatCommandHandler
     // /join 명령 사용법입니다.
     private const string JoinUsage = "Usage: /join <room>";
 
+    // /name 명령 사용법입니다.
+    private const string NameUsage = "Usage: /name <nickname>";
+
+    // /rename 명령 사용법입니다.
+    private const string RenameUsage = "Usage: /rename <nickname>";
+
     // 서버 안내 메시지입니다.
     public const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
 
@@ -137,6 +143,15 @@ public sealed class ChatCommandHandler
             return true;
         }
 
+        // /name 명령에 닉네임이 빠지면 사용법을 안내합니다.
+        if (message.Text.Equals("/name", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 사용법을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, NameUsage);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
         // /rename 명령은 /name과 같은 닉네임 변경 별칭입니다.
         if (message.Text.StartsWith("/rename ", StringComparison.OrdinalIgnoreCase))
         {
@@ -144,6 +159,15 @@ public sealed class ChatCommandHandler
             string requestedName = message.Text["/rename ".Length..].Trim();
             // 닉네임 변경을 처리합니다.
             await ChangeClientNameAsync(connection, requestedName);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /rename 명령에 닉네임이 빠지면 사용법을 안내합니다.
+        if (message.Text.Equals("/rename", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 사용법을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, RenameUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

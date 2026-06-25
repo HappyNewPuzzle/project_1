@@ -43,6 +43,8 @@ await RunWhisperCommandTestAsync();
 await RunWhisperUnknownUserCommandTestAsync();
 await RunInvalidWhisperCommandTestAsync();
 await RunRenameCommandTestAsync();
+await RunMissingNameCommandTestAsync();
+await RunMissingRenameCommandTestAsync();
 await RunDuplicateNameCommandTestAsync();
 await RunInvalidNameCommandTestAsync();
 
@@ -736,6 +738,34 @@ static async Task RunRenameCommandTestAsync()
     if (!capturedOutput.ToString().Contains("[server] alice is now clara"))
     {
         throw new InvalidOperationException("/rename did not log the expected rename message.");
+    }
+}
+
+static async Task RunMissingNameCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/name"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /name <nickname>")
+    {
+        throw new InvalidOperationException("Missing /name nickname did not return the expected usage notice.");
+    }
+}
+
+static async Task RunMissingRenameCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/rename"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /rename <nickname>")
+    {
+        throw new InvalidOperationException("Missing /rename nickname did not return the expected usage notice.");
     }
 }
 
