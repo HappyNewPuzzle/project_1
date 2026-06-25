@@ -41,7 +41,7 @@ await RunRenameCommandTestAsync();
 await RunDuplicateNameCommandTestAsync();
 await RunInvalidNameCommandTestAsync();
 
-Console.WriteLine("All protocol tests passed.");
+Console.WriteLine("All socket study tests passed.");
 
 static async Task RunProtocolRoundTripTestAsync(MessageType type, string text)
 {
