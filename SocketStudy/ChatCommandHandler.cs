@@ -3,7 +3,7 @@ public sealed class ChatCommandHandler
 {
     // 방 이름에 허용할 문자 집합입니다.
     // 사용자에게 보여줄 명령 목록입니다.
-    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /join <room>, /leave, /where, /ping, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
+    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -209,6 +209,26 @@ public sealed class ChatCommandHandler
         {
             // 보낸 사람에게만 짧은 응답을 돌려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, "pong");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /echo 명령은 서버가 받은 문장을 그대로 돌려줍니다.
+        if (message.Text.StartsWith("/echo ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 명령 뒤쪽의 본문만 잘라냅니다.
+            string echoText = message.Text["/echo ".Length..].Trim();
+            // 본문이 비어 있으면 사용법을 안내합니다.
+            if (string.IsNullOrWhiteSpace(echoText))
+            {
+                // 보낸 사람에게만 사용법을 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "Usage: /echo <message>");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 보낸 사람에게만 echo 응답을 돌려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"echo: {echoText}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

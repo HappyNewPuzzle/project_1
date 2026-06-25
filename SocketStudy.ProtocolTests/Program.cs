@@ -22,6 +22,7 @@ await RunHelpCommandTestAsync();
 await RunCommandsAliasTestAsync();
 await RunWhereCommandTestAsync();
 await RunPingCommandTestAsync();
+await RunEchoCommandTestAsync();
 await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
@@ -366,6 +367,20 @@ static async Task RunPingCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "pong")
     {
         throw new InvalidOperationException("/ping did not return pong.");
+    }
+}
+
+static async Task RunEchoCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/echo hello server"));
+
+    if (!handled || context.SentMessages.Single().Text != "echo: hello server")
+    {
+        throw new InvalidOperationException("/echo did not return the expected message.");
     }
 }
 
