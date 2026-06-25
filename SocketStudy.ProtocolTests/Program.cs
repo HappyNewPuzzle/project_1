@@ -35,6 +35,7 @@ await RunLeaveCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
 await RunStatsCommandTestAsync();
+await RunMotdCommandTestAsync();
 await RunMeCommandTestAsync();
 await RunEmptyMeCommandTestAsync();
 await RunWhisperCommandTestAsync();
@@ -586,6 +587,20 @@ static async Task RunStatsCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Stats: users=2, rooms=2, current-room-users=1")
     {
         throw new InvalidOperationException("/stats did not return the expected summary.");
+    }
+}
+
+static async Task RunMotdCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/motd"));
+
+    if (!handled || context.SentMessages.Single().Text != "Welcome to SocketStudy. Type /help to see commands.")
+    {
+        throw new InvalidOperationException("/motd did not return the expected message.");
     }
 }
 

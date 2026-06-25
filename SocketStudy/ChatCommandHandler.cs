@@ -3,7 +3,7 @@ public sealed class ChatCommandHandler
 {
     // 방 이름에 허용할 문자 집합입니다.
     // 사용자에게 보여줄 명령 목록입니다.
-    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
+    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /motd, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
 
     // /echo 명령 사용법입니다.
     private const string EchoUsage = "Usage: /echo <message>";
@@ -13,6 +13,9 @@ public sealed class ChatCommandHandler
 
     // /whisper 명령 사용법입니다.
     private const string WhisperUsage = "Usage: /whisper <nickname> <message>";
+
+    // 서버 안내 메시지입니다.
+    private const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -180,6 +183,15 @@ public sealed class ChatCommandHandler
             int currentRoomUserCount = getClientNamesInRoom(connection.RoomName).Length;
             // 요약 정보를 보낸 사람에게만 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Stats: users={userCount}, rooms={roomCount}, current-room-users={currentRoomUserCount}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /motd 명령은 서버 안내 메시지를 보여줍니다.
+        if (message.Text.Equals("/motd", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 서버 안내 메시지를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, MessageOfTheDay);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
