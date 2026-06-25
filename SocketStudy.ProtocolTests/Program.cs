@@ -598,7 +598,7 @@ static async Task RunMotdCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/motd"));
 
-    if (!handled || context.SentMessages.Single().Text != "Welcome to SocketStudy. Type /help to see commands.")
+    if (!handled || context.SentMessages.Single().Text != ChatCommandHandler.MessageOfTheDay)
     {
         throw new InvalidOperationException("/motd did not return the expected message.");
     }
