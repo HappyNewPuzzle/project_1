@@ -10,6 +10,7 @@ await RunInvalidMessageTypeTestAsync();
 await RunIncompleteBodyTestAsync();
 await RunTooLargeLengthTestAsync();
 RunMessageSizeLimitTest();
+RunNameRulesTest();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -136,6 +137,29 @@ static void RunMessageSizeLimitTest()
     if (MessageProtocol.IsWithinMessageSizeLimit(tooLargeMessage))
     {
         throw new InvalidOperationException("Expected a message over the size limit to be rejected.");
+    }
+}
+
+static void RunNameRulesTest()
+{
+    if (NameRules.MaxNameLength != 20)
+    {
+        throw new InvalidOperationException("NameRules should keep the expected max name length.");
+    }
+
+    if (!NameRules.HasOnlyAllowedCharacters("alice_123-test"))
+    {
+        throw new InvalidOperationException("NameRules should allow letters, numbers, '-' and '_'.");
+    }
+
+    if (NameRules.HasOnlyAllowedCharacters("bad name"))
+    {
+        throw new InvalidOperationException("NameRules should reject spaces.");
+    }
+
+    if (NameRules.HasOnlyAllowedCharacters("bad!name"))
+    {
+        throw new InvalidOperationException("NameRules should reject unsupported punctuation.");
     }
 }
 
