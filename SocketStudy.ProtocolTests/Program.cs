@@ -34,6 +34,8 @@ await RunRoomUsersCommandTestAsync();
 await RunStatsCommandTestAsync();
 await RunMeCommandTestAsync();
 await RunWhisperCommandTestAsync();
+await RunWhisperUnknownUserCommandTestAsync();
+await RunInvalidWhisperCommandTestAsync();
 await RunRenameCommandTestAsync();
 await RunDuplicateNameCommandTestAsync();
 await RunInvalidNameCommandTestAsync();
@@ -560,6 +562,34 @@ static async Task RunWhisperCommandTestAsync()
         context.SentMessages[1].Text != "whisper to bob: hello")
     {
         throw new InvalidOperationException("/whisper did not send the expected sender confirmation.");
+    }
+}
+
+static async Task RunWhisperUnknownUserCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/whisper clara hello"));
+
+    if (!handled || context.SentMessages.Single().Text != "User not found: clara")
+    {
+        throw new InvalidOperationException("/whisper did not report an unknown target user.");
+    }
+}
+
+static async Task RunInvalidWhisperCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/whisper bob"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /whisper <nickname> <message>")
+    {
+        throw new InvalidOperationException("Invalid /whisper did not return the expected usage notice.");
     }
 }
 
