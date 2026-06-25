@@ -785,3 +785,86 @@ dfd2889 Document message size limit
 7374fc7 Cover room snapshot casing
 092cf4f Cover shared name rules
 ```
+
+### MOTD와 명령 사용법 개선
+
+추가로 `/motd` 명령을 만들었습니다.
+
+```text
+> /motd
+< [notice] Welcome to SocketStudy. Type /help to see commands.
+```
+
+MOTD는 message of the day의 줄임말로, 서버가 사용자에게 보여주는 짧은 안내 메시지라고 생각하면 됩니다.
+
+이번 변경에서는 두 가지 흐름을 만들었습니다.
+
+1. 사용자가 `/motd`를 입력하면 안내 메시지를 다시 볼 수 있습니다.
+2. 클라이언트가 처음 접속했을 때도 서버가 같은 안내 메시지를 보내줍니다.
+
+공부 포인트:
+
+- 같은 문자열을 여러 곳에 직접 쓰지 않고 `ChatCommandHandler.MessageOfTheDay` 상수로 공유했습니다.
+- 테스트도 같은 상수를 사용해서 문자열 중복을 줄였습니다.
+- 서버 접속 흐름과 명령 처리 흐름이 같은 메시지를 재사용합니다.
+
+### 명령 목록 관리 개선
+
+`/help` 출력은 처음에는 긴 문자열 하나로 관리했습니다.
+
+명령이 많아지면서 아래처럼 배열에서 문자열을 만들도록 바꿨습니다.
+
+```csharp
+private static readonly string[] CommandNames = [ ... ];
+private static readonly string CommandList = $"Commands: {string.Join(", ", CommandNames)}";
+```
+
+공부 포인트:
+
+- 긴 문자열 하나보다 배열이 수정하기 쉽습니다.
+- 새 명령을 넣을 때 쉼표나 순서를 확인하기 편합니다.
+- `/help` 테스트가 `/motd`, `/echo <message>` 같은 최근 명령을 포함하는지 확인합니다.
+
+### 인자 없는 명령 처리
+
+아래 명령들은 인자가 필요합니다.
+
+- `/name <nickname>`
+- `/rename <nickname>`
+- `/join <room>`
+- `/echo <message>`
+- `/me <action>`
+- `/whisper <nickname> <message>`
+
+이제 인자 없이 명령만 입력하면 unknown command가 아니라 사용법을 보여줍니다.
+
+```text
+> /join
+< [notice] Usage: /join <room>
+```
+
+반복되는 처리는 아래 헬퍼로 정리했습니다.
+
+```csharp
+private async Task<bool> SendUsageIfExactCommandAsync(...)
+```
+
+공부 포인트:
+
+- 같은 패턴이 여러 번 반복되면 작은 헬퍼를 고려할 수 있습니다.
+- 단, 처음부터 추상화하지 말고 반복이 실제로 보일 때 정리하는 편이 안전합니다.
+- 테스트가 있으면 리팩터링 후에도 동작 유지 여부를 바로 확인할 수 있습니다.
+
+추가된 주요 커밋:
+
+```text
+1e66c84 Add motd chat command
+7c9495a Send motd on client connect
+0234254 Reuse motd constant in tests
+e9162ad Verify new commands in help output
+5fa096a Build help text from command list
+4c4f5ab Handle missing join room
+41455e6 Handle missing rename arguments
+9874e4f Handle missing message command arguments
+39af501 Extract exact command usage helper
+```
