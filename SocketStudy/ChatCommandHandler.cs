@@ -15,7 +15,7 @@ public sealed class ChatCommandHandler
     private const string WhisperUsage = "Usage: /whisper <nickname> <message>";
 
     // 서버 안내 메시지입니다.
-    private const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
+    public const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
