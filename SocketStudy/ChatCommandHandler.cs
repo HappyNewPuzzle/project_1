@@ -315,6 +315,15 @@ public sealed class ChatCommandHandler
             return true;
         }
 
+        // /echo 명령에 본문이 빠지면 사용법을 안내합니다.
+        if (message.Text.Equals("/echo", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 사용법을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, EchoUsage);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
         // /time 명령은 서버의 현재 시간을 보여줍니다.
         if (message.Text.Equals("/time", StringComparison.OrdinalIgnoreCase))
         {
@@ -357,11 +366,29 @@ public sealed class ChatCommandHandler
             return true;
         }
 
+        // /me 명령에 행동 본문이 빠지면 사용법을 안내합니다.
+        if (message.Text.Equals("/me", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 사용법을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, MeUsage);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
         // /whisper 명령은 특정 클라이언트에게만 메시지를 보냅니다.
         if (message.Text.StartsWith("/whisper ", StringComparison.OrdinalIgnoreCase))
         {
             // 개인 메시지 명령을 처리합니다.
             await SendWhisperAsync(connection, message.Text);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /whisper 명령에 대상이나 본문이 빠지면 사용법을 안내합니다.
+        if (message.Text.Equals("/whisper", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 사용법을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, WhisperUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

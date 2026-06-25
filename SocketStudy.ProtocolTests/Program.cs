@@ -27,6 +27,7 @@ await RunWhereCommandTestAsync();
 await RunPingCommandTestAsync();
 await RunEchoCommandTestAsync();
 await RunEmptyEchoCommandTestAsync();
+await RunMissingEchoMessageCommandTestAsync();
 await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
@@ -39,9 +40,11 @@ await RunStatsCommandTestAsync();
 await RunMotdCommandTestAsync();
 await RunMeCommandTestAsync();
 await RunEmptyMeCommandTestAsync();
+await RunMissingMeActionCommandTestAsync();
 await RunWhisperCommandTestAsync();
 await RunWhisperUnknownUserCommandTestAsync();
 await RunInvalidWhisperCommandTestAsync();
+await RunMissingWhisperPayloadCommandTestAsync();
 await RunRenameCommandTestAsync();
 await RunMissingNameCommandTestAsync();
 await RunMissingRenameCommandTestAsync();
@@ -472,6 +475,20 @@ static async Task RunEmptyEchoCommandTestAsync()
     }
 }
 
+static async Task RunMissingEchoMessageCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/echo"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /echo <message>")
+    {
+        throw new InvalidOperationException("Missing /echo message did not return the expected usage notice.");
+    }
+}
+
 static async Task RunTimeCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -652,6 +669,20 @@ static async Task RunEmptyMeCommandTestAsync()
     }
 }
 
+static async Task RunMissingMeActionCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/me"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /me <action>")
+    {
+        throw new InvalidOperationException("Missing /me action did not return the expected usage notice.");
+    }
+}
+
 static async Task RunWhisperCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -703,6 +734,20 @@ static async Task RunInvalidWhisperCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Usage: /whisper <nickname> <message>")
     {
         throw new InvalidOperationException("Invalid /whisper did not return the expected usage notice.");
+    }
+}
+
+static async Task RunMissingWhisperPayloadCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/whisper"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /whisper <nickname> <message>")
+    {
+        throw new InvalidOperationException("Missing /whisper payload did not return the expected usage notice.");
     }
 }
 
