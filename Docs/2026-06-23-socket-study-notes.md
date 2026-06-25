@@ -868,3 +868,29 @@ e9162ad Verify new commands in help output
 9874e4f Handle missing message command arguments
 39af501 Extract exact command usage helper
 ```
+
+### 서버 정보 분리
+
+마지막으로 서버 이름과 버전을 `ServerInfo.cs`로 분리했습니다.
+
+```csharp
+public static class ServerInfo
+{
+    public const string Name = "SocketStudy";
+    public const string Version = "v1";
+    public const string VersionMessage = $"{Name} server {Version}";
+}
+```
+
+공부 포인트:
+
+- 서버 이름, 버전처럼 여러 곳에서 쓰는 값은 한 곳에서 관리하는 편이 좋습니다.
+- `/version` 명령은 `ServerInfo.VersionMessage`를 사용합니다.
+- 테스트도 같은 상수를 검증해서 버전 표시 형식을 고정합니다.
+
+추가된 커밋:
+
+```text
+aeaaabe Extract server info constants
+ddb073e Cover server info constants
+```
