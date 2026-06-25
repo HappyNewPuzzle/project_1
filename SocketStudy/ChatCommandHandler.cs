@@ -15,6 +15,7 @@ public sealed class ChatCommandHandler
         "/room-users",
         "/stats",
         "/motd",
+        "/version",
         "/join <room>",
         "/leave",
         "/where",
@@ -50,6 +51,9 @@ public sealed class ChatCommandHandler
 
     // 서버 안내 메시지입니다.
     public const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
+
+    // 서버 버전 안내 메시지입니다.
+    public const string VersionMessage = "SocketStudy server v1";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -240,6 +244,15 @@ public sealed class ChatCommandHandler
         {
             // 보낸 사람에게만 서버 안내 메시지를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, MessageOfTheDay);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /version 명령은 서버 예제 버전을 보여줍니다.
+        if (message.Text.Equals("/version", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 서버 버전을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, VersionMessage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

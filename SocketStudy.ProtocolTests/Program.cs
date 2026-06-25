@@ -38,6 +38,7 @@ await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
 await RunStatsCommandTestAsync();
 await RunMotdCommandTestAsync();
+await RunVersionCommandTestAsync();
 await RunMeCommandTestAsync();
 await RunEmptyMeCommandTestAsync();
 await RunMissingMeActionCommandTestAsync();
@@ -638,6 +639,20 @@ static async Task RunMotdCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != ChatCommandHandler.MessageOfTheDay)
     {
         throw new InvalidOperationException("/motd did not return the expected message.");
+    }
+}
+
+static async Task RunVersionCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/version"));
+
+    if (!handled || context.SentMessages.Single().Text != ChatCommandHandler.VersionMessage)
+    {
+        throw new InvalidOperationException("/version did not return the expected message.");
     }
 }
 
