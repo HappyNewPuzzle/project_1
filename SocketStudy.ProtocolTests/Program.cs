@@ -23,6 +23,7 @@ await RunCommandsAliasTestAsync();
 await RunWhereCommandTestAsync();
 await RunPingCommandTestAsync();
 await RunEchoCommandTestAsync();
+await RunEmptyEchoCommandTestAsync();
 await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
@@ -381,6 +382,20 @@ static async Task RunEchoCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "echo: hello server")
     {
         throw new InvalidOperationException("/echo did not return the expected message.");
+    }
+}
+
+static async Task RunEmptyEchoCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/echo   "));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /echo <message>")
+    {
+        throw new InvalidOperationException("Empty /echo did not return the expected usage notice.");
     }
 }
 
