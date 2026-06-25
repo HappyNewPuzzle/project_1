@@ -389,7 +389,10 @@ static async Task RunHelpCommandTestAsync()
     }
 
     SentMessage sent = context.SentMessages[0];
-    if (sent.Type != MessageType.Notice || !sent.Text.Contains("/join <room>"))
+    if (sent.Type != MessageType.Notice ||
+        !sent.Text.Contains("/join <room>") ||
+        !sent.Text.Contains("/motd") ||
+        !sent.Text.Contains("/echo <message>"))
     {
         throw new InvalidOperationException("/help output did not include expected command list.");
     }
