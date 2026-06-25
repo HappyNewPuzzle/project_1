@@ -18,6 +18,7 @@ await RunClientRegistryTracksCountAndNamesAsync();
 await RunClientRegistryFindsNamesCaseInsensitiveAsync();
 RunClientRegistryIncludesDefaultRoom();
 await RunClientRegistryFiltersRoomsAsync();
+await RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync();
 await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
 await RunCommandsAliasTestAsync();
@@ -301,6 +302,27 @@ static async Task RunClientRegistryFiltersRoomsAsync()
     if (registry.SnapshotRoom("study", alice).Single() != clara)
     {
         throw new InvalidOperationException("ClientRegistry did not snapshot a room with the expected exclusion.");
+    }
+}
+
+static async Task RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+
+    alice.MoveToRoom("study");
+    bob.MoveToRoom("study");
+    registry.Add(alice);
+    registry.Add(bob);
+
+    ClientConnection[] roomSnapshot = registry.SnapshotRoom("STUDY", except: alice);
+
+    if (roomSnapshot.Single() != bob)
+    {
+        throw new InvalidOperationException("ClientRegistry room snapshots should ignore room name casing.");
     }
 }
 
