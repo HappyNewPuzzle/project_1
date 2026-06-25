@@ -729,3 +729,59 @@ All socket study tests passed.
 2. 빈 입력일 때 `EchoUsage`를 보내는 부분 보기
 3. `SocketStudy.ProtocolTests/Program.cs`에서 실패 케이스 테스트들이 어떤 메시지를 기대하는지 보기
 4. 테스트를 직접 실행해 마지막 출력 문구 확인하기
+
+### 메시지 크기 제한 사전 검증
+
+`MessageProtocol`에는 메시지 본문 최대 크기 제한이 있습니다.
+
+```csharp
+public const int MaxMessageBytes = 1024 * 1024;
+```
+
+오늘은 이 제한을 외부에서도 확인할 수 있도록 아래 메서드를 추가했습니다.
+
+```csharp
+public static bool IsWithinMessageSizeLimit(string message)
+```
+
+이제 클라이언트는 사용자가 입력한 메시지를 서버로 보내기 전에 크기를 확인합니다.
+
+```text
+[client] Message is too large. Limit: 1048576 bytes.
+```
+
+공부 포인트:
+
+- protocol 제한은 보내는 쪽과 받는 쪽이 모두 알고 있어야 안전합니다.
+- 너무 큰 메시지는 네트워크로 보내기 전에 거절하는 편이 낫습니다.
+- 문자열 길이가 아니라 UTF-8 byte 수를 기준으로 검사해야 합니다.
+
+### 테스트 보강
+
+오늘 추가한 테스트 보강:
+
+- 메시지 크기 제한 경계값 테스트
+- `ClientRegistry.SnapshotRoom()` 대소문자 무시 테스트
+- `NameRules` 직접 테스트
+
+공부 포인트:
+
+- 간접 테스트만으로는 규칙이 어디서 깨졌는지 찾기 어렵습니다.
+- 작은 규칙 클래스라도 여러 곳에서 쓰이면 직접 테스트할 가치가 있습니다.
+- 방 이름처럼 사용자가 입력하는 값은 대소문자 정책을 테스트로 고정해두는 편이 좋습니다.
+
+오늘 추가된 주요 커밋:
+
+```text
+93ba1d3 Add echo chat command
+adfcd64 Test empty echo command
+e9ed782 Extract command usage messages
+614cacc Cover whisper error cases
+36aae83 Test empty action command
+728f6a8 Rename test success message
+5a5124c Document echo command study step
+b7db2db Validate client message size before send
+dfd2889 Document message size limit
+7374fc7 Cover room snapshot casing
+092cf4f Cover shared name rules
+```
