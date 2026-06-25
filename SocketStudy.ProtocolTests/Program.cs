@@ -33,6 +33,7 @@ await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
 await RunStatsCommandTestAsync();
 await RunMeCommandTestAsync();
+await RunEmptyMeCommandTestAsync();
 await RunWhisperCommandTestAsync();
 await RunWhisperUnknownUserCommandTestAsync();
 await RunInvalidWhisperCommandTestAsync();
@@ -536,6 +537,20 @@ static async Task RunMeCommandTestAsync()
     if (!handled || context.BroadcastMessages.Single().Text != "* alice waves")
     {
         throw new InvalidOperationException("/me did not broadcast the expected action message.");
+    }
+}
+
+static async Task RunEmptyMeCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/me   "));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /me <action>")
+    {
+        throw new InvalidOperationException("Empty /me did not return the expected usage notice.");
     }
 }
 
