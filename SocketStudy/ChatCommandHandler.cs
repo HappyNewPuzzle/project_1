@@ -39,6 +39,9 @@ public sealed class ChatCommandHandler
     // /whisper 명령 사용법입니다.
     private const string WhisperUsage = "Usage: /whisper <nickname> <message>";
 
+    // /join 명령 사용법입니다.
+    private const string JoinUsage = "Usage: /join <room>";
+
     // 서버 안내 메시지입니다.
     public const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
 
@@ -228,6 +231,15 @@ public sealed class ChatCommandHandler
             string roomName = message.Text["/join ".Length..].Trim();
             // 채팅방 이동을 처리합니다.
             await JoinRoomAsync(connection, roomName);
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /join 명령에 방 이름이 빠지면 사용법을 안내합니다.
+        if (message.Text.Equals("/join", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 사용법을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, JoinUsage);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

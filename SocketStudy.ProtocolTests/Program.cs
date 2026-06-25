@@ -31,6 +31,7 @@ await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunJoinCommandTestAsync();
+await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
@@ -526,6 +527,20 @@ static async Task RunJoinCommandTestAsync()
     if (!handled || context.MovedRooms.Single() != "study")
     {
         throw new InvalidOperationException("/join did not request a room move.");
+    }
+}
+
+static async Task RunMissingJoinRoomCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/join"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /join <room>")
+    {
+        throw new InvalidOperationException("Missing /join room did not return the expected usage notice.");
     }
 }
 
