@@ -11,6 +11,7 @@ await RunIncompleteBodyTestAsync();
 await RunTooLargeLengthTestAsync();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
+RunServerInfoTest();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -168,6 +169,24 @@ static void RunNameRulesTest()
     if (NameRules.HasOnlyAllowedCharacters("bad!name"))
     {
         throw new InvalidOperationException("NameRules should reject unsupported punctuation.");
+    }
+}
+
+static void RunServerInfoTest()
+{
+    if (ServerInfo.Name != "SocketStudy")
+    {
+        throw new InvalidOperationException("ServerInfo should keep the expected server name.");
+    }
+
+    if (ServerInfo.Version != "v1")
+    {
+        throw new InvalidOperationException("ServerInfo should keep the expected server version.");
+    }
+
+    if (ServerInfo.VersionMessage != "SocketStudy server v1")
+    {
+        throw new InvalidOperationException("ServerInfo should build the expected version message.");
     }
 }
 
