@@ -2,8 +2,33 @@
 public sealed class ChatCommandHandler
 {
     // 방 이름에 허용할 문자 집합입니다.
+    // 사용자에게 보여줄 명령 이름 목록입니다.
+    private static readonly string[] CommandNames =
+    [
+        "/help",
+        "/commands",
+        "/name <nickname>",
+        "/rename <nickname>",
+        "/whoami",
+        "/users",
+        "/rooms",
+        "/room-users",
+        "/stats",
+        "/motd",
+        "/join <room>",
+        "/leave",
+        "/where",
+        "/ping",
+        "/echo <message>",
+        "/time",
+        "/uptime",
+        "/me <action>",
+        "/whisper <nickname> <message>",
+        "/quit"
+    ];
+
     // 사용자에게 보여줄 명령 목록입니다.
-    private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /motd, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
+    private static readonly string CommandList = $"Commands: {string.Join(", ", CommandNames)}";
 
     // /echo 명령 사용법입니다.
     private const string EchoUsage = "Usage: /echo <message>";
