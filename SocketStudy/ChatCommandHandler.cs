@@ -5,6 +5,15 @@ public sealed class ChatCommandHandler
     // 사용자에게 보여줄 명령 목록입니다.
     private const string CommandList = "Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit";
 
+    // /echo 명령 사용법입니다.
+    private const string EchoUsage = "Usage: /echo <message>";
+
+    // /me 명령 사용법입니다.
+    private const string MeUsage = "Usage: /me <action>";
+
+    // /whisper 명령 사용법입니다.
+    private const string WhisperUsage = "Usage: /whisper <nickname> <message>";
+
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
 
@@ -222,7 +231,7 @@ public sealed class ChatCommandHandler
             if (string.IsNullOrWhiteSpace(echoText))
             {
                 // 보낸 사람에게만 사용법을 알려줍니다.
-                await sendToClientAsync(connection, MessageType.Notice, "Usage: /echo <message>");
+                await sendToClientAsync(connection, MessageType.Notice, EchoUsage);
                 // 명령을 처리했다고 호출자에게 알려줍니다.
                 return true;
             }
@@ -264,7 +273,7 @@ public sealed class ChatCommandHandler
             if (string.IsNullOrWhiteSpace(action))
             {
                 // 보낸 사람에게만 사용법을 알려줍니다.
-                await sendToClientAsync(connection, MessageType.Notice, "Usage: /me <action>");
+                await sendToClientAsync(connection, MessageType.Notice, MeUsage);
                 // 명령을 처리했다고 호출자에게 알려줍니다.
                 return true;
             }
@@ -372,7 +381,7 @@ public sealed class ChatCommandHandler
         if (separatorIndex <= 0 || separatorIndex == payload.Length - 1)
         {
             // 보낸 사람에게만 사용법을 알려줍니다.
-            await sendToClientAsync(sender, MessageType.Notice, "Usage: /whisper <nickname> <message>");
+            await sendToClientAsync(sender, MessageType.Notice, WhisperUsage);
             // 메서드를 종료합니다.
             return;
         }
