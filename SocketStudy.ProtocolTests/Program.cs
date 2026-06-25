@@ -9,6 +9,7 @@ await RunProtocolRoundTripTestAsync(MessageType.Chat, "한글 메시지와 emoji
 await RunInvalidMessageTypeTestAsync();
 await RunIncompleteBodyTestAsync();
 await RunTooLargeLengthTestAsync();
+RunMessageSizeLimitTest();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -119,6 +120,22 @@ static async Task RunTooLargeLengthTestAsync()
     await AssertThrowsAsync<IOException>(
         () => MessageProtocol.ReadMessageAsync(pair.ServerStream),
         "Expected oversized message length to throw IOException.");
+}
+
+static void RunMessageSizeLimitTest()
+{
+    string allowedMessage = new('a', MessageProtocol.MaxMessageBytes);
+    string tooLargeMessage = new('a', MessageProtocol.MaxMessageBytes + 1);
+
+    if (!MessageProtocol.IsWithinMessageSizeLimit(allowedMessage))
+    {
+        throw new InvalidOperationException("Expected a message at the size limit to be allowed.");
+    }
+
+    if (MessageProtocol.IsWithinMessageSizeLimit(tooLargeMessage))
+    {
+        throw new InvalidOperationException("Expected a message over the size limit to be rejected.");
+    }
 }
 
 static void RunServerPortParseTest()

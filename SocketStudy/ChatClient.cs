@@ -50,6 +50,15 @@ sealed class ChatClient
                 break;
             }
 
+            // protocol이 허용하는 크기보다 큰 입력은 보내지 않고 안내합니다.
+            if (!MessageProtocol.IsWithinMessageSizeLimit(input))
+            {
+                // 실제 byte 제한을 사용자에게 알려줍니다.
+                Console.WriteLine($"[client] Message is too large. Limit: {MessageProtocol.MaxMessageBytes} bytes.");
+                // 다음 입력을 기다립니다.
+                continue;
+            }
+
             // slash로 시작하면 명령 메시지로, 아니면 일반 채팅 메시지로 서버에 보냅니다.
             MessageType type = input.StartsWith('/') ? MessageType.Command : MessageType.Chat;
             // 사용자가 입력한 메시지를 typed length-prefixed protocol로 서버에 보냅니다.

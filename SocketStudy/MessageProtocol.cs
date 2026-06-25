@@ -7,7 +7,14 @@ public static class MessageProtocol
     // 메시지 타입 1바이트와 본문 길이 4바이트를 합친 header 크기입니다.
     private const int HeaderSize = 5;
     // 한 번에 받을 수 있는 메시지 본문의 최대 크기입니다. 너무 큰 메시지로 서버가 메모리를 많이 쓰는 일을 막습니다.
-    private const int MaxMessageBytes = 1024 * 1024;
+    public const int MaxMessageBytes = 1024 * 1024;
+
+    // 문자열이 protocol의 본문 크기 제한 안에 들어오는지 확인합니다.
+    public static bool IsWithinMessageSizeLimit(string message)
+    {
+        // UTF-8 기준 byte 수로 제한을 판단합니다.
+        return Encoding.UTF8.GetByteCount(message) <= MaxMessageBytes;
+    }
 
     // 문자열 메시지를 "4바이트 길이 + UTF-8 본문" 형식으로 stream에 씁니다.
     public static async Task WriteMessageAsync(
