@@ -655,3 +655,77 @@ b4eab9d Validate nickname characters
 2. `SocketStudy.ProtocolTests/Program.cs`에서 각 명령 테스트가 어떤 값을 검증하는지 보기
 3. `NameRules.cs`를 보고 닉네임과 방 이름 규칙이 어디서 재사용되는지 찾기
 4. `ClientRegistry.cs`에서 `DefaultRoomName`과 `GetRoomNames()` 흐름 보기
+
+## 18. 2026-06-25 이어서 진행한 내용
+
+오늘은 명령 처리와 테스트 품질을 조금 더 다듬었습니다.
+
+추가된 주요 내용:
+
+- `/echo <message>` 명령 추가
+- 빈 `/echo` 입력 테스트 추가
+- `/whisper` 실패 케이스 테스트 추가
+- 빈 `/me` 입력 테스트 추가
+- 명령 사용법 문구를 상수로 정리
+- 테스트 성공 문구를 `All socket study tests passed.`로 변경
+
+### /echo 명령
+
+`/echo`는 서버가 받은 문장을 그대로 돌려주는 명령입니다.
+
+```text
+> /echo hello server
+< [notice] echo: hello server
+```
+
+공부 포인트:
+
+- 명령어 뒤쪽의 본문만 잘라내는 방법을 볼 수 있습니다.
+- 본문이 비어 있으면 사용법을 돌려주는 흐름을 볼 수 있습니다.
+- 서버 왕복이 정상인지 확인하는 간단한 디버그 명령으로도 쓸 수 있습니다.
+
+관련 코드:
+
+- `ChatCommandHandler.cs`: `/echo` 처리
+- `SocketStudy.ProtocolTests/Program.cs`: 정상 `/echo`, 빈 `/echo` 테스트
+- `SocketStudy/README.md`: 사용 예시
+
+### 실패 케이스 테스트
+
+오늘은 정상 동작뿐 아니라 실패 케이스도 보강했습니다.
+
+추가된 테스트:
+
+- `/echo   ` -> `Usage: /echo <message>`
+- `/whisper clara hello` -> `User not found: clara`
+- `/whisper bob` -> `Usage: /whisper <nickname> <message>`
+- `/me   ` -> `Usage: /me <action>`
+
+공부 포인트:
+
+- 네트워크 프로그램은 정상 입력보다 잘못된 입력을 더 많이 방어해야 합니다.
+- 실패 케이스 테스트가 있으면 리팩터링할 때 동작이 망가졌는지 빨리 알 수 있습니다.
+- 사용법 안내 문자열은 여러 곳에 직접 쓰지 않고 상수로 관리하는 편이 안전합니다.
+
+### 테스트 출력 문구 변경
+
+처음 테스트 프로젝트는 protocol만 확인했지만, 지금은 아래까지 같이 확인합니다.
+
+- protocol round-trip
+- command-line option parsing
+- `ClientRegistry`
+- `ChatCommandHandler`
+- 명령 성공/실패 케이스
+
+그래서 마지막 출력 문구를 아래처럼 바꿨습니다.
+
+```text
+All socket study tests passed.
+```
+
+복습 추천 순서:
+
+1. `ChatCommandHandler.cs`에서 `/echo` 처리 흐름 보기
+2. 빈 입력일 때 `EchoUsage`를 보내는 부분 보기
+3. `SocketStudy.ProtocolTests/Program.cs`에서 실패 케이스 테스트들이 어떤 메시지를 기대하는지 보기
+4. 테스트를 직접 실행해 마지막 출력 문구 확인하기
