@@ -54,4 +54,11 @@ public sealed class PlayerSession
         // 월드에 등장한 상태로 표시합니다.
         IsSpawned = true;
     }
+
+    // 플레이어를 현재 월드에서 사라진 상태로 바꿉니다.
+    public void Despawn()
+    {
+        // 월드에 등장하지 않은 상태로 표시합니다.
+        IsSpawned = false;
+    }
 }

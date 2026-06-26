@@ -46,6 +46,8 @@ await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
 await RunNearbyCommandTestAsync();
 await RunSpawnCommandTestAsync();
+await RunDespawnCommandTestAsync();
+await RunDespawnWhenNotSpawnedCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
@@ -247,6 +249,13 @@ static void RunPlayerSessionTest()
     if (!session.IsSpawned)
     {
         throw new InvalidOperationException("Player sessions should store spawn state.");
+    }
+
+    session.Despawn();
+
+    if (session.IsSpawned)
+    {
+        throw new InvalidOperationException("Player sessions should store despawn state.");
     }
 }
 
@@ -864,6 +873,51 @@ static async Task RunSpawnCommandTestAsync()
     if (context.NearbyNotices.Single() != "alice spawned at x=10, y=20")
     {
         throw new InvalidOperationException("/spawn did not notify nearby players.");
+    }
+}
+
+static async Task RunDespawnCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.MoveTo(new WorldPosition(10, 20));
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/despawn"));
+
+    if (!handled || context.SentMessages.Single().Text != "Despawned from x=10, y=20")
+    {
+        throw new InvalidOperationException("/despawn did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.IsSpawned)
+    {
+        throw new InvalidOperationException("/despawn did not update the player session spawn state.");
+    }
+
+    if (context.NearbyNotices.Single() != "alice despawned from x=10, y=20")
+    {
+        throw new InvalidOperationException("/despawn did not notify nearby players.");
+    }
+}
+
+static async Task RunDespawnWhenNotSpawnedCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/despawn"));
+
+    if (!handled || context.SentMessages.Single().Text != "You are not spawned.")
+    {
+        throw new InvalidOperationException("/despawn should explain when the player is not spawned.");
+    }
+
+    if (context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("/despawn should not notify nearby players when already not spawned.");
     }
 }
 

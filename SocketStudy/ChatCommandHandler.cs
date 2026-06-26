@@ -16,6 +16,7 @@ public sealed class ChatCommandHandler
         "/move <x> <y>",
         "/nearby",
         "/spawn",
+        "/despawn",
         "/users",
         "/rooms",
         "/room-users",
@@ -334,6 +335,30 @@ public sealed class ChatCommandHandler
             await broadcastNearbyNoticeAsync(connection, $"{connection.Name} spawned at {connection.Session.Position}");
             // 보낸 사람에게만 현재 스폰 위치를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Spawned at {connection.Session.Position}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /despawn 명령은 현재 플레이어가 월드에서 사라졌다는 사실을 주변 플레이어에게 알립니다.
+        if (message.Text.Equals("/despawn", StringComparison.OrdinalIgnoreCase))
+        {
+            // 이미 월드에 나타나 있지 않다면 상태를 바꾸지 않습니다.
+            if (!connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 현재 상태를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You are not spawned.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 주변 알림에 사용할 사라지기 전 위치를 보관합니다.
+            WorldPosition despawnPosition = connection.Session.Position;
+            // 현재 세션을 despawn 상태로 변경합니다.
+            connection.Session.Despawn();
+            // 주변 플레이어에게 despawn 알림을 보냅니다.
+            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} despawned from {despawnPosition}");
+            // 보낸 사람에게만 despawn 완료 위치를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Despawned from {despawnPosition}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
