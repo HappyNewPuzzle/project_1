@@ -223,6 +223,11 @@ static void RunPlayerSessionTest()
         throw new InvalidOperationException("New player sessions should start at the world origin.");
     }
 
+    if (session.IsSpawned)
+    {
+        throw new InvalidOperationException("New player sessions should not start spawned.");
+    }
+
     session.Authenticate(1001);
 
     if (!session.IsAuthenticated || session.PlayerId != 1001)
@@ -235,6 +240,13 @@ static void RunPlayerSessionTest()
     if (session.Position != new WorldPosition(10, 20))
     {
         throw new InvalidOperationException("Player sessions should store moved positions.");
+    }
+
+    session.Spawn();
+
+    if (!session.IsSpawned)
+    {
+        throw new InvalidOperationException("Player sessions should store spawn state.");
     }
 }
 
@@ -666,7 +678,7 @@ static async Task RunSessionCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/session"));
 
-    if (!handled || context.SentMessages.Single().Text != "Session: player-id=0, state=anonymous")
+    if (!handled || context.SentMessages.Single().Text != "Session: player-id=0, state=anonymous, spawn=not-spawned")
     {
         throw new InvalidOperationException("/session did not return the expected anonymous session state.");
     }
@@ -700,7 +712,7 @@ static async Task RunAuthenticatedSessionCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/session"));
 
-    if (!handled || context.SentMessages.Single().Text != "Session: player-id=1001, state=authenticated")
+    if (!handled || context.SentMessages.Single().Text != "Session: player-id=1001, state=authenticated, spawn=not-spawned")
     {
         throw new InvalidOperationException("/session did not return the expected authenticated session state.");
     }
@@ -842,6 +854,11 @@ static async Task RunSpawnCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Spawned at x=10, y=20")
     {
         throw new InvalidOperationException("/spawn did not return the expected notice.");
+    }
+
+    if (!context.Connection.Session.IsSpawned)
+    {
+        throw new InvalidOperationException("/spawn did not update the player session spawn state.");
     }
 
     if (context.NearbyNotices.Single() != "alice spawned at x=10, y=20")

@@ -225,8 +225,10 @@ public sealed class ChatCommandHandler
         {
             // 인증 상태를 읽기 쉬운 문자열로 바꿉니다.
             string authState = connection.Session.IsAuthenticated ? "authenticated" : "anonymous";
+            // 스폰 상태를 읽기 쉬운 문자열로 바꿉니다.
+            string spawnState = connection.Session.IsSpawned ? "spawned" : "not-spawned";
             // 보낸 사람에게만 세션 상태를 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, $"Session: player-id={connection.Session.PlayerId}, state={authState}");
+            await sendToClientAsync(connection, MessageType.Notice, $"Session: player-id={connection.Session.PlayerId}, state={authState}, spawn={spawnState}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
@@ -326,6 +328,8 @@ public sealed class ChatCommandHandler
         // /spawn 명령은 현재 위치에 플레이어가 나타났다는 사실을 주변 플레이어에게 알립니다.
         if (message.Text.Equals("/spawn", StringComparison.OrdinalIgnoreCase))
         {
+            // 현재 세션을 스폰 상태로 변경합니다.
+            connection.Session.Spawn();
             // 주변 플레이어에게 스폰 알림을 보냅니다.
             await broadcastNearbyNoticeAsync(connection, $"{connection.Name} spawned at {connection.Session.Position}");
             // 보낸 사람에게만 현재 스폰 위치를 알려줍니다.

@@ -13,6 +13,9 @@ public sealed class PlayerSession
     // 플레이어의 현재 월드 위치입니다.
     public WorldPosition Position { get; private set; }
 
+    // 플레이어가 월드에 스폰되었는지 여부입니다.
+    public bool IsSpawned { get; private set; }
+
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
     {
@@ -20,6 +23,8 @@ public sealed class PlayerSession
         PlayerId = AnonymousPlayerId;
         // 처음 위치는 월드 원점입니다.
         Position = WorldPosition.Origin;
+        // 처음에는 아직 월드에 스폰되지 않았습니다.
+        IsSpawned = false;
     }
 
     // 로그인 성공 후 플레이어 ID를 세션에 연결합니다.
@@ -41,5 +46,12 @@ public sealed class PlayerSession
     {
         // 새 위치를 세션에 저장합니다.
         Position = position;
+    }
+
+    // 플레이어를 현재 위치에 스폰된 상태로 바꿉니다.
+    public void Spawn()
+    {
+        // 월드에 등장한 상태로 표시합니다.
+        IsSpawned = true;
     }
 }
