@@ -959,3 +959,43 @@ public sealed class PlayerSession
 3aa9c30 Add learning login command
 8721856 Cover authenticated session status
 ```
+
+### 월드 위치와 이동
+
+MMO 서버의 가장 기본적인 게임 상태 중 하나는 플레이어 위치입니다.
+
+이번 step에서 `WorldPosition`과 `WorldRules`를 추가했습니다.
+
+```csharp
+public readonly record struct WorldPosition(int X, int Y);
+```
+
+현재 세션은 기본 위치 `x=0, y=0`에서 시작합니다.
+
+```text
+> /pos
+< [notice] Position: x=0, y=0
+
+> /move 10 20
+< [notice] Moved to x=10, y=20
+```
+
+학습용 월드 경계도 추가했습니다.
+
+```csharp
+public const int MinCoordinate = -100;
+public const int MaxCoordinate = 100;
+```
+
+공부 포인트:
+
+- 클라이언트가 보낸 위치를 서버가 그대로 믿으면 안 됩니다.
+- 서버는 이동 요청을 받으면 월드 규칙을 기준으로 검증해야 합니다.
+- 지금은 단순한 좌표 범위만 확인하지만, 나중에는 맵 충돌, 이동 속도, 거리 검증으로 확장됩니다.
+
+추가된 주요 커밋:
+
+```text
+0d5bfb5 Add player position commands
+67e5f31 Validate player movement bounds
+```
