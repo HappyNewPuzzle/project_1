@@ -12,6 +12,8 @@ public sealed class ChatCommandHandler
         "/whoami",
         "/session",
         "/login <playerId>",
+        "/pos",
+        "/move <x> <y>",
         "/users",
         "/rooms",
         "/room-users",
@@ -53,6 +55,9 @@ public sealed class ChatCommandHandler
 
     // /login 명령 사용법입니다.
     private const string LoginUsage = "Usage: /login <playerId>";
+
+    // /move 명령 사용법입니다.
+    private const string MoveUsage = "Usage: /move <x> <y>";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -236,6 +241,44 @@ public sealed class ChatCommandHandler
 
         // /login 명령에 플레이어 ID가 빠지면 사용법을 안내합니다.
         if (await SendUsageIfExactCommandAsync(connection, message.Text, "/login", LoginUsage))
+        {
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /pos 명령은 플레이어 세션의 현재 월드 위치를 보여줍니다.
+        if (message.Text.Equals("/pos", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 현재 위치를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Position: {connection.Session.Position}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /move 명령은 학습용으로 플레이어 위치를 변경합니다.
+        if (message.Text.StartsWith("/move ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 명령 뒤쪽의 좌표 두 개를 공백 기준으로 나눕니다.
+            string[] parts = message.Text["/move ".Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // x, y 두 값이 있고 둘 다 정수인지 확인합니다.
+            if (parts.Length != 2 || !int.TryParse(parts[0], out int x) || !int.TryParse(parts[1], out int y))
+            {
+                // 보낸 사람에게만 사용법을 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, MoveUsage);
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 세션 위치를 변경합니다.
+            connection.Session.MoveTo(new WorldPosition(x, y));
+            // 보낸 사람에게만 새 위치를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Moved to {connection.Session.Position}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /move 명령에 좌표가 빠지면 사용법을 안내합니다.
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/move", MoveUsage))
         {
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;

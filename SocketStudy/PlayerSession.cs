@@ -10,11 +10,16 @@ public sealed class PlayerSession
     // 플레이어가 로그인했는지 여부입니다.
     public bool IsAuthenticated => PlayerId != AnonymousPlayerId;
 
+    // 플레이어의 현재 월드 위치입니다.
+    public WorldPosition Position { get; private set; }
+
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
     {
         // 처음에는 로그인되지 않은 상태입니다.
         PlayerId = AnonymousPlayerId;
+        // 처음 위치는 월드 원점입니다.
+        Position = WorldPosition.Origin;
     }
 
     // 로그인 성공 후 플레이어 ID를 세션에 연결합니다.
@@ -29,5 +34,12 @@ public sealed class PlayerSession
 
         // 세션에 플레이어 ID를 저장합니다.
         PlayerId = playerId;
+    }
+
+    // 플레이어의 현재 위치를 변경합니다.
+    public void MoveTo(WorldPosition position)
+    {
+        // 새 위치를 세션에 저장합니다.
+        Position = position;
     }
 }

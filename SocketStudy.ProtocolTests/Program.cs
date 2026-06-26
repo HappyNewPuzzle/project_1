@@ -38,6 +38,9 @@ await RunLoginCommandTestAsync();
 await RunAuthenticatedSessionCommandTestAsync();
 await RunInvalidLoginCommandTestAsync();
 await RunMissingLoginCommandTestAsync();
+await RunPositionCommandTestAsync();
+await RunMoveCommandTestAsync();
+await RunInvalidMoveCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
@@ -210,11 +213,23 @@ static void RunPlayerSessionTest()
         throw new InvalidOperationException("New player sessions should start anonymous.");
     }
 
+    if (session.Position != WorldPosition.Origin)
+    {
+        throw new InvalidOperationException("New player sessions should start at the world origin.");
+    }
+
     session.Authenticate(1001);
 
     if (!session.IsAuthenticated || session.PlayerId != 1001)
     {
         throw new InvalidOperationException("Player sessions should store authenticated player ids.");
+    }
+
+    session.MoveTo(new WorldPosition(10, 20));
+
+    if (session.Position != new WorldPosition(10, 20))
+    {
+        throw new InvalidOperationException("Player sessions should store moved positions.");
     }
 }
 
@@ -661,6 +676,58 @@ static async Task RunMissingLoginCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Usage: /login <playerId>")
     {
         throw new InvalidOperationException("Missing /login player id did not return the expected usage notice.");
+    }
+}
+
+static async Task RunPositionCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/pos"));
+
+    if (!handled || context.SentMessages.Single().Text != "Position: x=0, y=0")
+    {
+        throw new InvalidOperationException("/pos did not return the expected default position.");
+    }
+}
+
+static async Task RunMoveCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 10 20"));
+
+    if (!handled || context.Connection.Session.Position != new WorldPosition(10, 20))
+    {
+        throw new InvalidOperationException("/move did not update the player session position.");
+    }
+
+    if (context.SentMessages.Single().Text != "Moved to x=10, y=20")
+    {
+        throw new InvalidOperationException("/move did not return the expected notice.");
+    }
+}
+
+static async Task RunInvalidMoveCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move north"));
+
+    if (!handled || context.Connection.Session.Position != WorldPosition.Origin)
+    {
+        throw new InvalidOperationException("Invalid /move should not update the player session position.");
+    }
+
+    if (context.SentMessages.Single().Text != "Usage: /move <x> <y>")
+    {
+        throw new InvalidOperationException("Invalid /move did not return the expected usage notice.");
     }
 }
 
