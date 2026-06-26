@@ -34,6 +34,9 @@ await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunSessionCommandTestAsync();
+await RunLoginCommandTestAsync();
+await RunInvalidLoginCommandTestAsync();
+await RunMissingLoginCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
@@ -590,6 +593,58 @@ static async Task RunSessionCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Session: player-id=0, state=anonymous")
     {
         throw new InvalidOperationException("/session did not return the expected anonymous session state.");
+    }
+}
+
+static async Task RunLoginCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login 1001"));
+
+    if (!handled || context.Connection.Session.PlayerId != 1001 || !context.Connection.Session.IsAuthenticated)
+    {
+        throw new InvalidOperationException("/login did not authenticate the player session.");
+    }
+
+    if (context.SentMessages.Single().Text != "Logged in as player 1001.")
+    {
+        throw new InvalidOperationException("/login did not return the expected notice.");
+    }
+}
+
+static async Task RunInvalidLoginCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login abc"));
+
+    if (!handled || context.Connection.Session.IsAuthenticated)
+    {
+        throw new InvalidOperationException("Invalid /login should not authenticate the player session.");
+    }
+
+    if (context.SentMessages.Single().Text != "Player id must be a positive number.")
+    {
+        throw new InvalidOperationException("Invalid /login did not return the expected notice.");
+    }
+}
+
+static async Task RunMissingLoginCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /login <playerId>")
+    {
+        throw new InvalidOperationException("Missing /login player id did not return the expected usage notice.");
     }
 }
 

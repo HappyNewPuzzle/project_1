@@ -11,6 +11,7 @@ public sealed class ChatCommandHandler
         "/rename <nickname>",
         "/whoami",
         "/session",
+        "/login <playerId>",
         "/users",
         "/rooms",
         "/room-users",
@@ -49,6 +50,9 @@ public sealed class ChatCommandHandler
 
     // /rename 명령 사용법입니다.
     private const string RenameUsage = "Usage: /rename <nickname>";
+
+    // /login 명령 사용법입니다.
+    private const string LoginUsage = "Usage: /login <playerId>";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -204,6 +208,35 @@ public sealed class ChatCommandHandler
             string authState = connection.Session.IsAuthenticated ? "authenticated" : "anonymous";
             // 보낸 사람에게만 세션 상태를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Session: player-id={connection.Session.PlayerId}, state={authState}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /login 명령은 학습용으로 플레이어 ID를 세션에 연결합니다.
+        if (message.Text.StartsWith("/login ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 명령 뒤쪽의 플레이어 ID 부분만 잘라냅니다.
+            string rawPlayerId = message.Text["/login ".Length..].Trim();
+            // 숫자 ID인지 확인합니다.
+            if (!long.TryParse(rawPlayerId, out long playerId) || playerId <= PlayerSession.AnonymousPlayerId)
+            {
+                // 보낸 사람에게만 실패 이유를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "Player id must be a positive number.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 세션에 플레이어 ID를 연결합니다.
+            connection.Session.Authenticate(playerId);
+            // 보낸 사람에게만 로그인 상태를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Logged in as player {playerId}.");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /login 명령에 플레이어 ID가 빠지면 사용법을 안내합니다.
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/login", LoginUsage))
+        {
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
