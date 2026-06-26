@@ -896,3 +896,66 @@ public static class ServerInfo
 aeaaabe Extract server info constants
 ddb073e Cover server info constants
 ```
+
+## 19. MMO 서버 방향으로 첫 확장
+
+최종 목표를 MMO RPG 서버 학습으로 잡았기 때문에, 채팅 서버 위에 MMO 서버의 핵심 개념을 하나씩 얹기 시작했습니다.
+
+### PlayerSession 추가
+
+`PlayerSession.cs`를 추가했습니다.
+
+```csharp
+public sealed class PlayerSession
+{
+    public const long AnonymousPlayerId = 0;
+    public long PlayerId { get; private set; }
+    public bool IsAuthenticated => PlayerId != AnonymousPlayerId;
+}
+```
+
+현재는 아주 단순합니다.
+
+- 처음 연결되면 anonymous 상태입니다.
+- `/login <playerId>` 명령으로 학습용 플레이어 ID를 세션에 연결합니다.
+- `/session` 명령으로 현재 세션 상태를 확인합니다.
+
+예시:
+
+```text
+> /session
+< [notice] Session: player-id=0, state=anonymous
+
+> /login 1001
+< [notice] Logged in as player 1001.
+
+> /session
+< [notice] Session: player-id=1001, state=authenticated
+```
+
+공부 포인트:
+
+- `ClientConnection`은 TCP 연결에 가깝습니다.
+- `PlayerSession`은 그 연결 위에 올라가는 게임 플레이어 상태입니다.
+- MMO 서버에서는 연결과 플레이어 상태를 분리해서 생각하는 것이 중요합니다.
+
+지금은 진짜 계정 인증이 아닙니다. 비밀번호, 토큰, DB 검증 없이 player id만 세션에 넣는 학습용 로그인입니다.
+
+나중에는 아래처럼 확장할 수 있습니다.
+
+```text
+/login 1001
+-> LoginRequest packet
+-> Account DB 검증
+-> Character 선택
+-> PlayerSession에 AccountId, CharacterId, ZoneId 연결
+```
+
+추가된 주요 커밋:
+
+```text
+3f186fc Add player session model
+81197c5 Add session status command
+3aa9c30 Add learning login command
+8721856 Cover authenticated session status
+```
