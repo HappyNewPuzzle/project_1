@@ -188,6 +188,11 @@ static void RunServerInfoTest()
     {
         throw new InvalidOperationException("ServerInfo should build the expected version message.");
     }
+
+    if (ServerInfo.MessageOfTheDay != "Welcome to SocketStudy. Type /help to see commands.")
+    {
+        throw new InvalidOperationException("ServerInfo should keep the expected MOTD message.");
+    }
 }
 
 static void RunServerPortParseTest()
@@ -655,7 +660,7 @@ static async Task RunMotdCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/motd"));
 
-    if (!handled || context.SentMessages.Single().Text != ChatCommandHandler.MessageOfTheDay)
+    if (!handled || context.SentMessages.Single().Text != ServerInfo.MessageOfTheDay)
     {
         throw new InvalidOperationException("/motd did not return the expected message.");
     }

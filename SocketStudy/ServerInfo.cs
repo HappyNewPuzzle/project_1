@@ -9,4 +9,7 @@ public static class ServerInfo
 
     // 사용자에게 보여줄 서버 버전 문구입니다.
     public const string VersionMessage = $"{Name} server {Version}";
+
+    // 서버 안내 메시지입니다.
+    public const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
 }

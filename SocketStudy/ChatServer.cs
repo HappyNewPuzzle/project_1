@@ -97,7 +97,7 @@ sealed class ChatServer
         // 새로 접속한 클라이언트 본인에게 환영 메시지와 현재 접속자 수를 알려줍니다.
         await SendToClientAsync(connection, MessageType.Notice, $"Welcome, {clientName}. Room: {connection.RoomName}. Online clients: {clients.Count}");
         // 처음 접속한 클라이언트에게 서버 안내 메시지도 함께 보냅니다.
-        await SendToClientAsync(connection, MessageType.Notice, ChatCommandHandler.MessageOfTheDay);
+        await SendToClientAsync(connection, MessageType.Notice, ServerInfo.MessageOfTheDay);
         // 기존 클라이언트들에게 새 클라이언트가 들어왔다는 서버 공지를 보냅니다.
         await BroadcastRoomNoticeAsync(connection.RoomName, $"{clientName} joined {connection.RoomName}. Online clients: {clients.Count}", except: connection);
 

@@ -49,9 +49,6 @@ public sealed class ChatCommandHandler
     // /rename 명령 사용법입니다.
     private const string RenameUsage = "Usage: /rename <nickname>";
 
-    // 서버 안내 메시지입니다.
-    public const string MessageOfTheDay = "Welcome to SocketStudy. Type /help to see commands.";
-
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
 
@@ -240,7 +237,7 @@ public sealed class ChatCommandHandler
         if (message.Text.Equals("/motd", StringComparison.OrdinalIgnoreCase))
         {
             // 보낸 사람에게만 서버 안내 메시지를 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, MessageOfTheDay);
+            await sendToClientAsync(connection, MessageType.Notice, ServerInfo.MessageOfTheDay);
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
