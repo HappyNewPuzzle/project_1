@@ -35,6 +35,7 @@ await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunSessionCommandTestAsync();
 await RunLoginCommandTestAsync();
+await RunAuthenticatedSessionCommandTestAsync();
 await RunInvalidLoginCommandTestAsync();
 await RunMissingLoginCommandTestAsync();
 await RunJoinCommandTestAsync();
@@ -612,6 +613,21 @@ static async Task RunLoginCommandTestAsync()
     if (context.SentMessages.Single().Text != "Logged in as player 1001.")
     {
         throw new InvalidOperationException("/login did not return the expected notice.");
+    }
+}
+
+static async Task RunAuthenticatedSessionCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/session"));
+
+    if (!handled || context.SentMessages.Single().Text != "Session: player-id=1001, state=authenticated")
+    {
+        throw new InvalidOperationException("/session did not return the expected authenticated session state.");
     }
 }
 
