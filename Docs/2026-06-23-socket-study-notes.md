@@ -1033,3 +1033,40 @@ MMO 서버는 보통 모든 플레이어에게 모든 정보를 보내지 않습
 3d3aef1 Add nearby player lookup
 c717c78 Notify nearby players on move
 ```
+
+### 스폰 상태
+
+MMO에서는 플레이어가 연결되어 있다고 해서 곧바로 월드에 등장한 것은 아닙니다.
+
+그래서 `PlayerSession`에 `IsSpawned` 상태를 추가했습니다.
+
+흐름:
+
+```text
+접속
+-> session anonymous
+-> /login 1001
+-> authenticated
+-> /spawn
+-> spawned
+```
+
+`/session` 출력도 스폰 상태를 함께 보여줍니다.
+
+```text
+> /session
+< [notice] Session: player-id=1001, state=authenticated, spawn=spawned
+```
+
+공부 포인트:
+
+- 로그인 상태와 월드 스폰 상태는 다릅니다.
+- 실제 MMO에서는 로그인 후 캐릭터 선택, 맵 로딩, 월드 입장 과정을 거칩니다.
+- 주변 플레이어에게 스폰 알림을 보내는 것은 “월드에 등장했다”는 이벤트의 작은 버전입니다.
+
+추가된 주요 커밋:
+
+```text
+706d067 Add player spawn command
+7cb7c6f Track player spawn state
+```
