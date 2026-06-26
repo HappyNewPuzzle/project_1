@@ -33,6 +33,7 @@ await RunMissingEchoMessageCommandTestAsync();
 await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
+await RunSessionCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
@@ -575,6 +576,20 @@ static async Task RunWhoAmICommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "You are alice in room study.")
     {
         throw new InvalidOperationException("/whoami did not return the current client identity.");
+    }
+}
+
+static async Task RunSessionCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/session"));
+
+    if (!handled || context.SentMessages.Single().Text != "Session: player-id=0, state=anonymous")
+    {
+        throw new InvalidOperationException("/session did not return the expected anonymous session state.");
     }
 }
 

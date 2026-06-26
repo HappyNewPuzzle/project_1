@@ -79,6 +79,13 @@ dotnet run -- client 192.168.0.10 5000 alice
 < [notice] You are alice in room lobby.
 ```
 
+MMO 확장을 위한 현재 플레이어 세션 상태는 `/session`으로 확인합니다.
+
+```text
+> /session
+< [notice] Session: player-id=0, state=anonymous
+```
+
 현재 접속자 목록을 보고 싶으면 `/users`를 입력합니다.
 
 ```text
@@ -90,7 +97,7 @@ dotnet run -- client 192.168.0.10 5000 alice
 
 ```text
 > /help
-< [notice] Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /users, /rooms, /room-users, /stats, /motd, /version, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
+< [notice] Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /session, /users, /rooms, /room-users, /stats, /motd, /version, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
 ```
 
 처음 접속하면 기본 채팅방 `lobby`에 들어갑니다. 다른 방으로 이동하려면 `/join`을 입력합니다.

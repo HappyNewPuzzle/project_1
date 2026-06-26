@@ -10,6 +10,7 @@ public sealed class ChatCommandHandler
         "/name <nickname>",
         "/rename <nickname>",
         "/whoami",
+        "/session",
         "/users",
         "/rooms",
         "/room-users",
@@ -192,6 +193,17 @@ public sealed class ChatCommandHandler
         {
             // 보낸 사람에게만 현재 연결 상태를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"You are {connection.Name} in room {connection.RoomName}.");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /session 명령은 MMO 확장을 위한 플레이어 세션 상태를 보여줍니다.
+        if (message.Text.Equals("/session", StringComparison.OrdinalIgnoreCase))
+        {
+            // 인증 상태를 읽기 쉬운 문자열로 바꿉니다.
+            string authState = connection.Session.IsAuthenticated ? "authenticated" : "anonymous";
+            // 보낸 사람에게만 세션 상태를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Session: player-id={connection.Session.PlayerId}, state={authState}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
