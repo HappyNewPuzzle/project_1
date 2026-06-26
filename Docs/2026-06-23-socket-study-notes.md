@@ -999,3 +999,37 @@ public const int MaxCoordinate = 100;
 0d5bfb5 Add player position commands
 67e5f31 Validate player movement bounds
 ```
+
+### 주변 플레이어 조회와 이동 알림
+
+MMO 서버는 보통 모든 플레이어에게 모든 정보를 보내지 않습니다.
+
+현재 플레이어와 가까운 플레이어에게만 필요한 정보를 보냅니다. 이 개념을 interest management라고 부릅니다.
+
+이번 step에서는 아주 작은 버전으로 `/nearby`를 추가했습니다.
+
+```text
+> /nearby
+< [notice] Nearby players (1): bob
+```
+
+규칙:
+
+- 같은 채팅방 안에 있어야 합니다.
+- `WorldRules.ViewDistance` 안에 있어야 합니다.
+- 자기 자신은 제외합니다.
+
+또한 `/move`로 위치가 바뀌면 주변 플레이어에게만 이동 notice를 보냅니다.
+
+공부 포인트:
+
+- MMO 서버는 “누구에게 보낼 것인가”를 계속 판단해야 합니다.
+- 지금은 맨해튼 거리로 단순 계산합니다.
+- 나중에는 zone, grid, quad tree, AOI 같은 구조로 확장할 수 있습니다.
+
+추가된 주요 커밋:
+
+```text
+3d3aef1 Add nearby player lookup
+c717c78 Notify nearby players on move
+```
