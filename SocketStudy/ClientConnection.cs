@@ -12,6 +12,9 @@ public sealed class ClientConnection
     // 실제 TCP 연결 객체입니다.
     public TcpClient Client { get; }
 
+    // MMO 서버로 확장할 때 사용할 플레이어 세션입니다.
+    public PlayerSession Session { get; } = new();
+
     // 클라이언트에게 바이트를 보내기 위한 network stream입니다.
     private readonly NetworkStream stream;
 

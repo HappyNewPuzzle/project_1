@@ -12,6 +12,7 @@ await RunTooLargeLengthTestAsync();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
+RunPlayerSessionTest();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -192,6 +193,23 @@ static void RunServerInfoTest()
     if (ServerInfo.MessageOfTheDay != "Welcome to SocketStudy. Type /help to see commands.")
     {
         throw new InvalidOperationException("ServerInfo should keep the expected MOTD message.");
+    }
+}
+
+static void RunPlayerSessionTest()
+{
+    var session = new PlayerSession();
+
+    if (session.IsAuthenticated || session.PlayerId != PlayerSession.AnonymousPlayerId)
+    {
+        throw new InvalidOperationException("New player sessions should start anonymous.");
+    }
+
+    session.Authenticate(1001);
+
+    if (!session.IsAuthenticated || session.PlayerId != 1001)
+    {
+        throw new InvalidOperationException("Player sessions should store authenticated player ids.");
     }
 }
 
