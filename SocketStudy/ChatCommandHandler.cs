@@ -269,8 +269,18 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
+            // 서버가 허용하는 월드 경계 안의 위치인지 확인합니다.
+            var nextPosition = new WorldPosition(x, y);
+            if (!WorldRules.IsInsideWorld(nextPosition))
+            {
+                // 보낸 사람에게만 실패 이유를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, $"Position must be between {WorldRules.MinCoordinate} and {WorldRules.MaxCoordinate}.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
             // 세션 위치를 변경합니다.
-            connection.Session.MoveTo(new WorldPosition(x, y));
+            connection.Session.MoveTo(nextPosition);
             // 보낸 사람에게만 새 위치를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Moved to {connection.Session.Position}");
             // 명령을 처리했다고 호출자에게 알려줍니다.

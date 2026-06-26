@@ -13,6 +13,7 @@ RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
 RunPlayerSessionTest();
+RunWorldRulesTest();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -41,6 +42,7 @@ await RunMissingLoginCommandTestAsync();
 await RunPositionCommandTestAsync();
 await RunMoveCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
+await RunOutOfBoundsMoveCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
@@ -230,6 +232,24 @@ static void RunPlayerSessionTest()
     if (session.Position != new WorldPosition(10, 20))
     {
         throw new InvalidOperationException("Player sessions should store moved positions.");
+    }
+}
+
+static void RunWorldRulesTest()
+{
+    if (!WorldRules.IsInsideWorld(WorldPosition.Origin))
+    {
+        throw new InvalidOperationException("WorldRules should allow the origin.");
+    }
+
+    if (!WorldRules.IsInsideWorld(new WorldPosition(WorldRules.MinCoordinate, WorldRules.MaxCoordinate)))
+    {
+        throw new InvalidOperationException("WorldRules should allow positions on the boundary.");
+    }
+
+    if (WorldRules.IsInsideWorld(new WorldPosition(WorldRules.MaxCoordinate + 1, 0)))
+    {
+        throw new InvalidOperationException("WorldRules should reject positions outside the boundary.");
     }
 }
 
@@ -728,6 +748,25 @@ static async Task RunInvalidMoveCommandTestAsync()
     if (context.SentMessages.Single().Text != "Usage: /move <x> <y>")
     {
         throw new InvalidOperationException("Invalid /move did not return the expected usage notice.");
+    }
+}
+
+static async Task RunOutOfBoundsMoveCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 101 0"));
+
+    if (!handled || context.Connection.Session.Position != WorldPosition.Origin)
+    {
+        throw new InvalidOperationException("Out-of-bounds /move should not update the player session position.");
+    }
+
+    if (context.SentMessages.Single().Text != "Position must be between -100 and 100.")
+    {
+        throw new InvalidOperationException("Out-of-bounds /move did not return the expected notice.");
     }
 }
 
