@@ -69,6 +69,9 @@ public sealed class ChatCommandHandler
     // 전체 클라이언트에게 채팅 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, string, Task> broadcastChatAsync;
 
+    // 주변 클라이언트에게 공지 메시지를 보내는 함수입니다.
+    private readonly Func<ClientConnection, string, Task> broadcastNearbyNoticeAsync;
+
     // 현재 접속자 이름 목록을 가져오는 함수입니다.
     private readonly Func<string[]> getClientNames;
 
@@ -101,6 +104,7 @@ public sealed class ChatCommandHandler
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
         Func<string, Task> broadcastNoticeAsync,
         Func<ClientConnection, string, Task> broadcastChatAsync,
+        Func<ClientConnection, string, Task> broadcastNearbyNoticeAsync,
         Func<string[]> getClientNames,
         Func<string[]> getRoomNames,
         Func<string, string[]> getClientNamesInRoom,
@@ -117,6 +121,8 @@ public sealed class ChatCommandHandler
         this.broadcastNoticeAsync = broadcastNoticeAsync;
         // 전체 채팅 함수를 저장합니다.
         this.broadcastChatAsync = broadcastChatAsync;
+        // 주변 공지 함수를 저장합니다.
+        this.broadcastNearbyNoticeAsync = broadcastNearbyNoticeAsync;
         // 접속자 이름 조회 함수를 저장합니다.
         this.getClientNames = getClientNames;
         // 채팅방 이름 조회 함수를 저장합니다.
@@ -288,6 +294,8 @@ public sealed class ChatCommandHandler
 
             // 세션 위치를 변경합니다.
             connection.Session.MoveTo(nextPosition);
+            // 주변 플레이어에게 이동을 알립니다.
+            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} moved to {connection.Session.Position}");
             // 보낸 사람에게만 새 위치를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Moved to {connection.Session.Position}");
             // 명령을 처리했다고 호출자에게 알려줍니다.

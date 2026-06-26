@@ -472,6 +472,11 @@ static async Task RunClientRegistryFindsNearbyNamesAsync()
     {
         throw new InvalidOperationException("ClientRegistry did not return the expected nearby names.");
     }
+
+    if (registry.SnapshotNearby(alice).Single() != bob)
+    {
+        throw new InvalidOperationException("ClientRegistry did not return the expected nearby snapshot.");
+    }
 }
 
 static async Task RunClientRegistryDrainsConnectionsAsync()
@@ -763,6 +768,11 @@ static async Task RunMoveCommandTestAsync()
     if (context.SentMessages.Single().Text != "Moved to x=10, y=20")
     {
         throw new InvalidOperationException("/move did not return the expected notice.");
+    }
+
+    if (context.NearbyNotices.Single() != "alice moved to x=10, y=20")
+    {
+        throw new InvalidOperationException("/move did not notify nearby players.");
     }
 }
 
@@ -1233,6 +1243,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public List<string> BroadcastNotices { get; } = new();
 
+    public List<string> NearbyNotices { get; } = new();
+
     public List<string> MovedRooms { get; } = new();
 
     public string? DuplicateName { get; set; }
@@ -1251,6 +1263,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             SendToClientAsync,
             BroadcastNoticeAsync,
             BroadcastChatAsync,
+            BroadcastNearbyNoticeAsync,
             () => ["alice", "bob"],
             () => ["lobby", "study"],
             roomName => roomName == "study" ? ["alice"] : [],
@@ -1288,6 +1301,12 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     private Task BroadcastNoticeAsync(string text)
     {
         BroadcastNotices.Add(text);
+        return Task.CompletedTask;
+    }
+
+    private Task BroadcastNearbyNoticeAsync(ClientConnection connection, string text)
+    {
+        NearbyNotices.Add(text);
         return Task.CompletedTask;
     }
 

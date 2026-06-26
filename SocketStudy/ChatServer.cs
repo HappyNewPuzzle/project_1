@@ -21,6 +21,7 @@ sealed class ChatServer
             SendToClientAsync,
             message => BroadcastServerNoticeAsync(message),
             BroadcastActionMessageAsync,
+            BroadcastNearbyNoticeAsync,
             clients.GetNames,
             clients.GetRoomNames,
             clients.GetNamesInRoom,
@@ -190,6 +191,20 @@ sealed class ChatServer
         {
             // 행동 메시지는 이미 화면에 표시할 문장을 갖고 있으므로 그대로 전달합니다.
             await SendToClientAsync(client, MessageType.Chat, message);
+        }
+    }
+
+    // 주변 플레이어에게만 서버 공지를 보내는 메서드입니다.
+    private async Task BroadcastNearbyNoticeAsync(ClientConnection center, string message)
+    {
+        // 현재 플레이어 주변의 접속자 목록 복사본을 가져옵니다.
+        ClientConnection[] targets = clients.SnapshotNearby(center);
+
+        // 주변 접속자에게만 notice 메시지를 보냅니다.
+        foreach (ClientConnection client in targets)
+        {
+            // 이동 알림은 채팅이 아니라 서버 공지로 전달합니다.
+            await SendToClientAsync(client, MessageType.Notice, message);
         }
     }
 

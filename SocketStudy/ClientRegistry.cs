@@ -113,6 +113,22 @@ public sealed class ClientRegistry
         }
     }
 
+    // 같은 방 안에서 현재 클라이언트 주변에 있는 접속자 목록을 복사합니다.
+    public ClientConnection[] SnapshotNearby(ClientConnection center)
+    {
+        // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+        lock (gate)
+        {
+            // 같은 방에 있고 시야 거리 안에 있는 다른 클라이언트만 복사합니다.
+            return clients
+                .Where(client =>
+                    client != center &&
+                    string.Equals(client.RoomName, center.RoomName, StringComparison.OrdinalIgnoreCase) &&
+                    WorldRules.IsNearby(client.Session.Position, center.Session.Position))
+                .ToArray();
+        }
+    }
+
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인합니다.
     public bool IsNameInUse(string name, ClientConnection except)
     {
