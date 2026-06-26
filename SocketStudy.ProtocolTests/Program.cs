@@ -45,6 +45,7 @@ await RunMoveCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
 await RunNearbyCommandTestAsync();
+await RunSpawnCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
@@ -826,6 +827,26 @@ static async Task RunNearbyCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Nearby players (1): bob")
     {
         throw new InvalidOperationException("/nearby did not return the expected nearby player list.");
+    }
+}
+
+static async Task RunSpawnCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.MoveTo(new WorldPosition(10, 20));
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/spawn"));
+
+    if (!handled || context.SentMessages.Single().Text != "Spawned at x=10, y=20")
+    {
+        throw new InvalidOperationException("/spawn did not return the expected notice.");
+    }
+
+    if (context.NearbyNotices.Single() != "alice spawned at x=10, y=20")
+    {
+        throw new InvalidOperationException("/spawn did not notify nearby players.");
     }
 }
 

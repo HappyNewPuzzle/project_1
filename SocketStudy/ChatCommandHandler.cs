@@ -15,6 +15,7 @@ public sealed class ChatCommandHandler
         "/pos",
         "/move <x> <y>",
         "/nearby",
+        "/spawn",
         "/users",
         "/rooms",
         "/room-users",
@@ -318,6 +319,17 @@ public sealed class ChatCommandHandler
             string displayNames = nearbyNames.Length == 0 ? "(none)" : string.Join(", ", nearbyNames);
             // 보낸 사람에게만 주변 플레이어 목록을 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Nearby players ({nearbyNames.Length}): {displayNames}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /spawn 명령은 현재 위치에 플레이어가 나타났다는 사실을 주변 플레이어에게 알립니다.
+        if (message.Text.Equals("/spawn", StringComparison.OrdinalIgnoreCase))
+        {
+            // 주변 플레이어에게 스폰 알림을 보냅니다.
+            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} spawned at {connection.Session.Position}");
+            // 보낸 사람에게만 현재 스폰 위치를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Spawned at {connection.Session.Position}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
