@@ -23,6 +23,7 @@ await RunClientRegistryFindsNamesCaseInsensitiveAsync();
 RunClientRegistryIncludesDefaultRoom();
 await RunClientRegistryFiltersRoomsAsync();
 await RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync();
+await RunClientRegistryFindsNearbyNamesAsync();
 await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
 await RunCommandsAliasTestAsync();
@@ -43,6 +44,7 @@ await RunPositionCommandTestAsync();
 await RunMoveCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
+await RunNearbyCommandTestAsync();
 await RunJoinCommandTestAsync();
 await RunMissingJoinRoomCommandTestAsync();
 await RunLeaveCommandTestAsync();
@@ -251,6 +253,16 @@ static void RunWorldRulesTest()
     {
         throw new InvalidOperationException("WorldRules should reject positions outside the boundary.");
     }
+
+    if (!WorldRules.IsNearby(WorldPosition.Origin, new WorldPosition(10, 10)))
+    {
+        throw new InvalidOperationException("WorldRules should treat close positions as nearby.");
+    }
+
+    if (WorldRules.IsNearby(WorldPosition.Origin, new WorldPosition(30, 0)))
+    {
+        throw new InvalidOperationException("WorldRules should reject positions outside view distance.");
+    }
 }
 
 static void RunServerPortParseTest()
@@ -437,6 +449,28 @@ static async Task RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync()
     if (roomSnapshot.Single() != bob)
     {
         throw new InvalidOperationException("ClientRegistry room snapshots should ignore room name casing.");
+    }
+}
+
+static async Task RunClientRegistryFindsNearbyNamesAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    await using NetworkPair claraPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+    var clara = new ClientConnection("clara", claraPair.Client, claraPair.ClientStream);
+
+    bob.Session.MoveTo(new WorldPosition(10, 10));
+    clara.Session.MoveTo(new WorldPosition(90, 90));
+    registry.Add(alice);
+    registry.Add(bob);
+    registry.Add(clara);
+
+    if (!registry.GetNearbyNames(alice).SequenceEqual(["bob"]))
+    {
+        throw new InvalidOperationException("ClientRegistry did not return the expected nearby names.");
     }
 }
 
@@ -767,6 +801,21 @@ static async Task RunOutOfBoundsMoveCommandTestAsync()
     if (context.SentMessages.Single().Text != "Position must be between -100 and 100.")
     {
         throw new InvalidOperationException("Out-of-bounds /move did not return the expected notice.");
+    }
+}
+
+static async Task RunNearbyCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.TargetConnection.Session.MoveTo(new WorldPosition(10, 10));
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/nearby"));
+
+    if (!handled || context.SentMessages.Single().Text != "Nearby players (1): bob")
+    {
+        throw new InvalidOperationException("/nearby did not return the expected nearby player list.");
     }
 }
 
@@ -1205,6 +1254,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             () => ["alice", "bob"],
             () => ["lobby", "study"],
             roomName => roomName == "study" ? ["alice"] : [],
+            GetNearbyNames,
             IsNameInUse,
             FindClientByName,
             MoveClientToRoomAsync,
@@ -1251,6 +1301,14 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
         return string.Equals(name, TargetConnection.Name, StringComparison.OrdinalIgnoreCase)
             ? TargetConnection
             : null;
+    }
+
+    private string[] GetNearbyNames(ClientConnection connection)
+    {
+        return connection.RoomName == TargetConnection.RoomName &&
+            WorldRules.IsNearby(connection.Session.Position, TargetConnection.Session.Position)
+            ? [TargetConnection.Name]
+            : [];
     }
 
     private Task MoveClientToRoomAsync(ClientConnection connection, string roomName)

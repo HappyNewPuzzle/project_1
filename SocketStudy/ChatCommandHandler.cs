@@ -14,6 +14,7 @@ public sealed class ChatCommandHandler
         "/login <playerId>",
         "/pos",
         "/move <x> <y>",
+        "/nearby",
         "/users",
         "/rooms",
         "/room-users",
@@ -77,6 +78,9 @@ public sealed class ChatCommandHandler
     // 특정 채팅방의 접속자 이름 목록을 가져오는 함수입니다.
     private readonly Func<string, string[]> getClientNamesInRoom;
 
+    // 현재 클라이언트 주변의 접속자 이름 목록을 가져오는 함수입니다.
+    private readonly Func<ClientConnection, string[]> getNearbyNames;
+
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 함수입니다.
     private readonly Func<string, ClientConnection, bool> isNameInUse;
 
@@ -100,6 +104,7 @@ public sealed class ChatCommandHandler
         Func<string[]> getClientNames,
         Func<string[]> getRoomNames,
         Func<string, string[]> getClientNamesInRoom,
+        Func<ClientConnection, string[]> getNearbyNames,
         Func<string, ClientConnection, bool> isNameInUse,
         Func<string, ClientConnection?> findClientByName,
         Func<ClientConnection, string, Task> moveClientToRoomAsync,
@@ -118,6 +123,8 @@ public sealed class ChatCommandHandler
         this.getRoomNames = getRoomNames;
         // 방별 접속자 이름 조회 함수를 저장합니다.
         this.getClientNamesInRoom = getClientNamesInRoom;
+        // 주변 접속자 이름 조회 함수를 저장합니다.
+        this.getNearbyNames = getNearbyNames;
         // 이름 중복 확인 함수를 저장합니다.
         this.isNameInUse = isNameInUse;
         // 이름 기반 클라이언트 조회 함수를 저장합니다.
@@ -290,6 +297,19 @@ public sealed class ChatCommandHandler
         // /move 명령에 좌표가 빠지면 사용법을 안내합니다.
         if (await SendUsageIfExactCommandAsync(connection, message.Text, "/move", MoveUsage))
         {
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /nearby 명령은 같은 방 안에서 시야 거리 안의 플레이어를 보여줍니다.
+        if (message.Text.Equals("/nearby", StringComparison.OrdinalIgnoreCase))
+        {
+            // 현재 클라이언트 주변의 이름 목록을 가져옵니다.
+            string[] nearbyNames = getNearbyNames(connection);
+            // 아무도 없으면 읽기 쉬운 표시를 사용합니다.
+            string displayNames = nearbyNames.Length == 0 ? "(none)" : string.Join(", ", nearbyNames);
+            // 보낸 사람에게만 주변 플레이어 목록을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Nearby players ({nearbyNames.Length}): {displayNames}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
