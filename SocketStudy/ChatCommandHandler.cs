@@ -347,6 +347,24 @@ public sealed class ChatCommandHandler
         // /spawn 명령은 현재 위치에 플레이어가 나타났다는 사실을 주변 플레이어에게 알립니다.
         if (message.Text.Equals("/spawn", StringComparison.OrdinalIgnoreCase))
         {
+            // 로그인하지 않은 세션은 월드에 스폰할 수 없습니다.
+            if (!connection.Session.IsAuthenticated)
+            {
+                // 보낸 사람에게만 로그인이 필요하다고 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must login before spawning.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 이미 스폰된 세션은 같은 상태 전이를 반복할 수 없습니다.
+            if (connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 이미 스폰된 상태라고 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You are already spawned.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
             // 현재 세션을 스폰 상태로 변경합니다.
             connection.Session.Spawn();
             // 주변 플레이어에게 스폰 알림을 보냅니다.

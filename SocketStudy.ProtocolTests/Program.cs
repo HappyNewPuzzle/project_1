@@ -47,7 +47,9 @@ await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
 await RunNearbyWhenNotSpawnedCommandTestAsync();
 await RunNearbyCommandTestAsync();
+await RunSpawnRequiresAuthenticationCommandTestAsync();
 await RunSpawnCommandTestAsync();
+await RunDuplicateSpawnCommandTestAsync();
 await RunDespawnCommandTestAsync();
 await RunDespawnWhenNotSpawnedCommandTestAsync();
 await RunJoinCommandTestAsync();
@@ -909,6 +911,7 @@ static async Task RunNearbyWhenNotSpawnedCommandTestAsync()
 static async Task RunSpawnCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
     context.Connection.Session.MoveTo(new WorldPosition(10, 20));
 
     bool handled = await context.Handler.TryHandleAsync(
@@ -928,6 +931,46 @@ static async Task RunSpawnCommandTestAsync()
     if (context.NearbyNotices.Single() != "alice spawned at x=10, y=20")
     {
         throw new InvalidOperationException("/spawn did not notify nearby players.");
+    }
+}
+
+static async Task RunSpawnRequiresAuthenticationCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/spawn"));
+
+    if (!handled || context.SentMessages.Single().Text != "You must login before spawning.")
+    {
+        throw new InvalidOperationException("/spawn should explain that the player must login first.");
+    }
+
+    if (context.Connection.Session.IsSpawned || context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Rejected anonymous /spawn should not change or broadcast spawn state.");
+    }
+}
+
+static async Task RunDuplicateSpawnCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/spawn"));
+
+    if (!handled || context.SentMessages.Single().Text != "You are already spawned.")
+    {
+        throw new InvalidOperationException("Duplicate /spawn should explain that the player is already spawned.");
+    }
+
+    if (!context.Connection.Session.IsSpawned || context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Duplicate /spawn should keep state without broadcasting.");
     }
 }
 
