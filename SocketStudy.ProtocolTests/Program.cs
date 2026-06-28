@@ -47,6 +47,12 @@ await RunLogoutWhileSpawnedCommandTestAsync();
 await RunLogoutWhenAnonymousCommandTestAsync();
 await RunPositionCommandTestAsync();
 await RunMapCommandTestAsync();
+await RunWarpCommandTestAsync();
+await RunWarpRequiresAuthenticationCommandTestAsync();
+await RunWarpWhenNotSpawnedCommandTestAsync();
+await RunInvalidWarpCommandTestAsync();
+await RunInvalidWarpMapCommandTestAsync();
+await RunOutOfBoundsWarpCommandTestAsync();
 await RunMoveWhenNotSpawnedCommandTestAsync();
 await RunMoveCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
@@ -972,6 +978,155 @@ static async Task RunMapCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Map: 2")
     {
         throw new InvalidOperationException("/map did not return the current game map id.");
+    }
+}
+
+static async Task RunWarpCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.MoveTo(new WorldPosition(5, 6));
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/warp 2 30 40"));
+
+    if (!handled || context.SentMessages.Single().Text != "Warped to map=2, x=30, y=40")
+    {
+        throw new InvalidOperationException("/warp did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.MapId != 2 ||
+        context.Connection.Session.Position != new WorldPosition(30, 40) ||
+        !context.Connection.Session.IsSpawned)
+    {
+        throw new InvalidOperationException("/warp did not update the player world state.");
+    }
+
+    string[] expectedNotices =
+    [
+        "alice left map 1 from x=5, y=6",
+        "alice entered map 2 at x=30, y=40"
+    ];
+
+    if (!context.NearbyNotices.SequenceEqual(expectedNotices))
+    {
+        throw new InvalidOperationException("/warp did not notify the old and new map in order.");
+    }
+}
+
+static async Task RunWarpRequiresAuthenticationCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/warp 2 30 40"));
+
+    if (!handled || context.SentMessages.Single().Text != "You must login before warping.")
+    {
+        throw new InvalidOperationException("Anonymous /warp did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.MapId != WorldRules.DefaultMapId ||
+        context.Connection.Session.Position != WorldPosition.Origin ||
+        context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Anonymous /warp should not change or broadcast world state.");
+    }
+}
+
+static async Task RunWarpWhenNotSpawnedCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/warp 2 30 40"));
+
+    if (!handled || context.SentMessages.Single().Text != "You must spawn before warping.")
+    {
+        throw new InvalidOperationException("Unspawned /warp did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.MapId != WorldRules.DefaultMapId ||
+        context.Connection.Session.Position != WorldPosition.Origin ||
+        context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Unspawned /warp should not change or broadcast world state.");
+    }
+}
+
+static async Task RunInvalidWarpCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/warp second-map"));
+
+    if (!handled || context.SentMessages.Single().Text != "Usage: /warp <mapId> <x> <y>")
+    {
+        throw new InvalidOperationException("Invalid /warp did not return the expected usage notice.");
+    }
+
+    if (context.Connection.Session.MapId != WorldRules.DefaultMapId ||
+        context.Connection.Session.Position != WorldPosition.Origin ||
+        !context.Connection.Session.IsSpawned ||
+        context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Invalid /warp should preserve world state.");
+    }
+}
+
+static async Task RunInvalidWarpMapCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/warp 0 30 40"));
+
+    if (!handled || context.SentMessages.Single().Text != "Map id must be positive.")
+    {
+        throw new InvalidOperationException("Invalid /warp map did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.MapId != WorldRules.DefaultMapId ||
+        !context.Connection.Session.IsSpawned ||
+        context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Invalid /warp map should preserve world state.");
+    }
+}
+
+static async Task RunOutOfBoundsWarpCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/warp 2 101 0"));
+
+    if (!handled || context.SentMessages.Single().Text != "Position must be between -100 and 100.")
+    {
+        throw new InvalidOperationException("Out-of-bounds /warp did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.MapId != WorldRules.DefaultMapId ||
+        context.Connection.Session.Position != WorldPosition.Origin ||
+        !context.Connection.Session.IsSpawned ||
+        context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Out-of-bounds /warp should preserve world state.");
     }
 }
 

@@ -15,6 +15,7 @@ public sealed class ChatCommandHandler
         "/logout",
         "/pos",
         "/map",
+        "/warp <mapId> <x> <y>",
         "/move <x> <y>",
         "/nearby",
         "/spawn",
@@ -63,6 +64,9 @@ public sealed class ChatCommandHandler
 
     // /move 명령 사용법입니다.
     private const string MoveUsage = "Usage: /move <x> <y>";
+
+    // /warp 명령 사용법입니다.
+    private const string WarpUsage = "Usage: /warp <mapId> <x> <y>";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -326,6 +330,85 @@ public sealed class ChatCommandHandler
         {
             // 보낸 사람에게만 현재 맵 ID를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Map: {connection.Session.MapId}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /warp 명령은 스폰된 플레이어를 다른 맵과 위치로 전환합니다.
+        if (message.Text.StartsWith("/warp ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 로그인하지 않은 세션은 게임 맵을 이동할 수 없습니다.
+            if (!connection.Session.IsAuthenticated)
+            {
+                // 보낸 사람에게만 로그인이 필요하다고 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must login before warping.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 월드에 스폰되지 않은 세션은 맵 전환을 시작할 수 없습니다.
+            if (!connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 스폰이 필요하다고 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must spawn before warping.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 명령 뒤쪽의 맵 ID와 좌표 두 개를 공백 기준으로 나눕니다.
+            string[] parts = message.Text["/warp ".Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // mapId, x, y 세 값이 모두 정수인지 확인합니다.
+            if (parts.Length != 3 ||
+                !int.TryParse(parts[0], out int mapId) ||
+                !int.TryParse(parts[1], out int x) ||
+                !int.TryParse(parts[2], out int y))
+            {
+                // 보낸 사람에게만 사용법을 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, WarpUsage);
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 맵 ID는 양수만 허용합니다.
+            if (mapId <= 0)
+            {
+                // 보낸 사람에게만 실패 이유를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "Map id must be positive.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 서버가 허용하는 월드 경계 안의 위치인지 확인합니다.
+            var nextPosition = new WorldPosition(x, y);
+            if (!WorldRules.IsInsideWorld(nextPosition))
+            {
+                // 보낸 사람에게만 실패 이유를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, $"Position must be between {WorldRules.MinCoordinate} and {WorldRules.MaxCoordinate}.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 기존 맵의 주변 플레이어에게 퇴장을 먼저 알립니다.
+            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} left map {connection.Session.MapId} from {connection.Session.Position}");
+            // 기존 맵 AOI에서 플레이어를 제거합니다.
+            connection.Session.Despawn();
+            // despawn 상태에서 목적지 맵으로 변경합니다.
+            connection.Session.ChangeMap(mapId);
+            // 목적지 좌표로 위치를 변경합니다.
+            connection.Session.MoveTo(nextPosition);
+            // 새 맵 AOI에 플레이어를 추가합니다.
+            connection.Session.Spawn();
+            // 새 맵의 주변 플레이어에게 입장을 알립니다.
+            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} entered map {connection.Session.MapId} at {connection.Session.Position}");
+            // 보낸 사람에게만 맵 전환 결과를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Warped to map={connection.Session.MapId}, {connection.Session.Position}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /warp 명령에 인자가 빠지면 사용법을 안내합니다.
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/warp", WarpUsage))
+        {
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
