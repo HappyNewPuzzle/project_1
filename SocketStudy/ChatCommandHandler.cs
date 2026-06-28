@@ -14,6 +14,7 @@ public sealed class ChatCommandHandler
         "/login <playerId>",
         "/logout",
         "/pos",
+        "/map",
         "/move <x> <y>",
         "/nearby",
         "/spawn",
@@ -320,6 +321,15 @@ public sealed class ChatCommandHandler
             return true;
         }
 
+        // /map 명령은 플레이어 세션의 현재 게임 맵 ID를 보여줍니다.
+        if (message.Text.Equals("/map", StringComparison.OrdinalIgnoreCase))
+        {
+            // 보낸 사람에게만 현재 맵 ID를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Map: {connection.Session.MapId}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
         // /move 명령은 학습용으로 플레이어 위치를 변경합니다.
         if (message.Text.StartsWith("/move ", StringComparison.OrdinalIgnoreCase))
         {
@@ -370,7 +380,7 @@ public sealed class ChatCommandHandler
             return true;
         }
 
-        // /nearby 명령은 같은 방 안에서 시야 거리 안의 플레이어를 보여줍니다.
+        // /nearby 명령은 같은 게임 맵에서 시야 거리 안의 플레이어를 보여줍니다.
         if (message.Text.Equals("/nearby", StringComparison.OrdinalIgnoreCase))
         {
             // 월드에 스폰되지 않은 세션은 주변 플레이어를 탐색할 수 없습니다.

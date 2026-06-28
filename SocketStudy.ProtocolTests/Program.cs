@@ -46,6 +46,7 @@ await RunLogoutCommandTestAsync();
 await RunLogoutWhileSpawnedCommandTestAsync();
 await RunLogoutWhenAnonymousCommandTestAsync();
 await RunPositionCommandTestAsync();
+await RunMapCommandTestAsync();
 await RunMoveWhenNotSpawnedCommandTestAsync();
 await RunMoveCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
@@ -234,6 +235,11 @@ static void RunPlayerSessionTest()
         throw new InvalidOperationException("New player sessions should start at the world origin.");
     }
 
+    if (session.MapId != WorldRules.DefaultMapId)
+    {
+        throw new InvalidOperationException("New player sessions should start in the default map.");
+    }
+
     if (session.IsSpawned)
     {
         throw new InvalidOperationException("New player sessions should not start spawned.");
@@ -262,9 +268,25 @@ static void RunPlayerSessionTest()
 
     session.MoveTo(new WorldPosition(10, 20));
 
-    if (session.Position != new WorldPosition(10, 20))
+    try
     {
-        throw new InvalidOperationException("Player sessions should store moved positions.");
+        session.ChangeMap(0);
+        throw new InvalidOperationException("Player sessions should reject invalid map ids.");
+    }
+    catch (ArgumentOutOfRangeException exception) when (exception.ParamName == "mapId")
+    {
+    }
+
+    if (session.MapId != WorldRules.DefaultMapId)
+    {
+        throw new InvalidOperationException("Invalid map changes should preserve the current map.");
+    }
+
+    session.ChangeMap(2);
+
+    if (session.Position != new WorldPosition(10, 20) || session.MapId != 2)
+    {
+        throw new InvalidOperationException("Player sessions should store moved positions and maps.");
     }
 
     session.Spawn();
@@ -272,6 +294,15 @@ static void RunPlayerSessionTest()
     if (!session.IsSpawned)
     {
         throw new InvalidOperationException("Player sessions should store spawn state.");
+    }
+
+    try
+    {
+        session.ChangeMap(WorldRules.DefaultMapId);
+        throw new InvalidOperationException("Player sessions should reject map changes while spawned.");
+    }
+    catch (InvalidOperationException exception) when (exception.Message == "Spawned player session cannot change maps.")
+    {
     }
 
     try
@@ -293,9 +324,9 @@ static void RunPlayerSessionTest()
     session.Logout();
 
     if (session.IsAuthenticated || session.PlayerId != PlayerSession.AnonymousPlayerId ||
-        session.Position != WorldPosition.Origin)
+        session.Position != WorldPosition.Origin || session.MapId != WorldRules.DefaultMapId)
     {
-        throw new InvalidOperationException("Player sessions should reset authentication and position on logout.");
+        throw new InvalidOperationException("Player sessions should reset authentication, position, and map on logout.");
     }
 }
 
@@ -525,9 +556,12 @@ static async Task RunClientRegistryFindsNearbyNamesAsync()
     var clara = new ClientConnection("clara", claraPair.Client, claraPair.ClientStream);
 
     alice.Session.Spawn();
+    bob.MoveToRoom("trade");
     bob.Session.MoveTo(new WorldPosition(10, 10));
     bob.Session.Spawn();
+    clara.Session.ChangeMap(2);
     clara.Session.MoveTo(new WorldPosition(5, 5));
+    clara.Session.Spawn();
     registry.Add(alice);
     registry.Add(bob);
     registry.Add(clara);
@@ -923,6 +957,21 @@ static async Task RunPositionCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Position: x=0, y=0")
     {
         throw new InvalidOperationException("/pos did not return the expected default position.");
+    }
+}
+
+static async Task RunMapCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.ChangeMap(2);
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/map"));
+
+    if (!handled || context.SentMessages.Single().Text != "Map: 2")
+    {
+        throw new InvalidOperationException("/map did not return the current game map id.");
     }
 }
 
@@ -1654,7 +1703,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     private string[] GetNearbyNames(ClientConnection connection)
     {
         return TargetConnection.Session.IsSpawned &&
-            connection.RoomName == TargetConnection.RoomName &&
+            connection.Session.MapId == TargetConnection.Session.MapId &&
             WorldRules.IsNearby(connection.Session.Position, TargetConnection.Session.Position)
             ? [TargetConnection.Name]
             : [];

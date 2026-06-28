@@ -13,6 +13,9 @@ public sealed class PlayerSession
     // 플레이어의 현재 월드 위치입니다.
     public WorldPosition Position { get; private set; }
 
+    // 플레이어가 속한 현재 게임 맵 ID입니다.
+    public int MapId { get; private set; }
+
     // 플레이어가 월드에 스폰되었는지 여부입니다.
     public bool IsSpawned { get; private set; }
 
@@ -23,6 +26,8 @@ public sealed class PlayerSession
         PlayerId = AnonymousPlayerId;
         // 처음 위치는 월드 원점입니다.
         Position = WorldPosition.Origin;
+        // 처음 맵은 학습용 기본 맵입니다.
+        MapId = WorldRules.DefaultMapId;
         // 처음에는 아직 월드에 스폰되지 않았습니다.
         IsSpawned = false;
     }
@@ -55,6 +60,27 @@ public sealed class PlayerSession
         Position = position;
     }
 
+    // 스폰 전에 플레이어가 입장할 게임 맵을 변경합니다.
+    public void ChangeMap(int mapId)
+    {
+        // 맵 ID는 양수만 허용합니다.
+        if (mapId <= 0)
+        {
+            // 잘못된 맵 ID가 세션에 저장되지 않도록 막습니다.
+            throw new ArgumentOutOfRangeException(nameof(mapId), "Map id must be positive.");
+        }
+
+        // 스폰된 플레이어는 현재 단계에서 맵을 직접 바꿀 수 없습니다.
+        if (IsSpawned)
+        {
+            // 맵 이동 중 기존 AOI에 엔티티가 남는 상태를 막습니다.
+            throw new InvalidOperationException("Spawned player session cannot change maps.");
+        }
+
+        // 세션에 새 게임 맵 ID를 저장합니다.
+        MapId = mapId;
+    }
+
     // 플레이어를 현재 위치에 스폰된 상태로 바꿉니다.
     public void Spawn()
     {
@@ -83,5 +109,7 @@ public sealed class PlayerSession
         PlayerId = AnonymousPlayerId;
         // 다음 로그인에 이전 위치가 이어지지 않도록 원점으로 초기화합니다.
         Position = WorldPosition.Origin;
+        // 다음 로그인에 이전 맵이 이어지지 않도록 기본 맵으로 초기화합니다.
+        MapId = WorldRules.DefaultMapId;
     }
 }

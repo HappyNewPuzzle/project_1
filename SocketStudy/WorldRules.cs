@@ -1,6 +1,9 @@
 // MMO 월드에서 서버가 검증해야 하는 기본 규칙을 모아둡니다.
 public static class WorldRules
 {
+    // 새 플레이어 세션이 시작할 기본 맵 ID입니다.
+    public const int DefaultMapId = 1;
+
     // 학습용 월드의 최소 좌표입니다.
     public const int MinCoordinate = -100;
 
