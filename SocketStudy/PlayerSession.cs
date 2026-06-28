@@ -68,4 +68,20 @@ public sealed class PlayerSession
         // 월드에 등장하지 않은 상태로 표시합니다.
         IsSpawned = false;
     }
+
+    // 인증된 플레이어 정보를 세션에서 제거합니다.
+    public void Logout()
+    {
+        // 월드에 스폰된 플레이어는 먼저 despawn해야 합니다.
+        if (IsSpawned)
+        {
+            // 월드 엔티티가 남은 채 인증 정보만 사라지는 상태를 막습니다.
+            throw new InvalidOperationException("Spawned player session cannot logout.");
+        }
+
+        // 세션을 익명 플레이어 ID로 되돌립니다.
+        PlayerId = AnonymousPlayerId;
+        // 다음 로그인에 이전 위치가 이어지지 않도록 원점으로 초기화합니다.
+        Position = WorldPosition.Origin;
+    }
 }

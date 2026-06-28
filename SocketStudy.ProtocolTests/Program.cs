@@ -42,6 +42,9 @@ await RunLoginWhileSpawnedCommandTestAsync();
 await RunAuthenticatedSessionCommandTestAsync();
 await RunInvalidLoginCommandTestAsync();
 await RunMissingLoginCommandTestAsync();
+await RunLogoutCommandTestAsync();
+await RunLogoutWhileSpawnedCommandTestAsync();
+await RunLogoutWhenAnonymousCommandTestAsync();
 await RunPositionCommandTestAsync();
 await RunMoveWhenNotSpawnedCommandTestAsync();
 await RunMoveCommandTestAsync();
@@ -271,11 +274,28 @@ static void RunPlayerSessionTest()
         throw new InvalidOperationException("Player sessions should store spawn state.");
     }
 
+    try
+    {
+        session.Logout();
+        throw new InvalidOperationException("Player sessions should reject logout while spawned.");
+    }
+    catch (InvalidOperationException exception) when (exception.Message == "Spawned player session cannot logout.")
+    {
+    }
+
     session.Despawn();
 
     if (session.IsSpawned)
     {
         throw new InvalidOperationException("Player sessions should store despawn state.");
+    }
+
+    session.Logout();
+
+    if (session.IsAuthenticated || session.PlayerId != PlayerSession.AnonymousPlayerId ||
+        session.Position != WorldPosition.Origin)
+    {
+        throw new InvalidOperationException("Player sessions should reset authentication and position on logout.");
     }
 }
 
@@ -827,6 +847,68 @@ static async Task RunMissingLoginCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Usage: /login <playerId>")
     {
         throw new InvalidOperationException("Missing /login player id did not return the expected usage notice.");
+    }
+}
+
+static async Task RunLogoutCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.MoveTo(new WorldPosition(10, 20));
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/logout"));
+
+    if (!handled || context.SentMessages.Single().Text != "Logged out.")
+    {
+        throw new InvalidOperationException("/logout did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.IsAuthenticated ||
+        context.Connection.Session.PlayerId != PlayerSession.AnonymousPlayerId ||
+        context.Connection.Session.Position != WorldPosition.Origin)
+    {
+        throw new InvalidOperationException("/logout did not reset the player session.");
+    }
+}
+
+static async Task RunLogoutWhileSpawnedCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.MoveTo(new WorldPosition(10, 20));
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/logout"));
+
+    if (!handled || context.SentMessages.Single().Text != "You must despawn before logging out.")
+    {
+        throw new InvalidOperationException("Spawned /logout did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.PlayerId != 1001 ||
+        !context.Connection.Session.IsAuthenticated ||
+        !context.Connection.Session.IsSpawned ||
+        context.Connection.Session.Position != new WorldPosition(10, 20))
+    {
+        throw new InvalidOperationException("Spawned /logout should preserve the player session.");
+    }
+}
+
+static async Task RunLogoutWhenAnonymousCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/logout"));
+
+    if (!handled || context.SentMessages.Single().Text != "You are not logged in.")
+    {
+        throw new InvalidOperationException("Anonymous /logout did not return the expected notice.");
     }
 }
 

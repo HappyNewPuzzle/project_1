@@ -1218,3 +1218,42 @@ spawned player 1001
 - 세션의 인증 정체성은 월드 상태보다 먼저 확정되어야 합니다.
 - 명령 처리기의 검증과 도메인 객체의 불변 조건(invariant)은 서로 다른 방어선입니다.
 - 실패한 상태 전이는 기존 인증 정보와 월드 상태를 그대로 보존해야 합니다.
+
+### 로그아웃과 세션 초기화
+
+인증 상태에서 익명 상태로 돌아가는 `/logout` 명령을 추가했습니다.
+월드 엔티티가 남은 채 인증 정보만 사라지지 않도록 먼저 `/despawn`을 실행해야 합니다.
+
+```text
+spawned
+-> /despawn
+authenticated, not-spawned
+-> /logout
+anonymous, not-spawned
+```
+
+스폰 상태에서 바로 로그아웃하면 요청을 거부하고 기존 세션을 유지합니다.
+
+```text
+> /logout
+< [notice] You must despawn before logging out.
+```
+
+정상 로그아웃은 플레이어 ID를 `0`으로, 위치를 원점으로 초기화합니다.
+
+```text
+> /despawn
+< [notice] Despawned from x=10, y=20
+
+> /logout
+< [notice] Logged out.
+
+> /session
+< [notice] Session: player-id=0, state=anonymous, spawn=not-spawned
+```
+
+공부 포인트:
+
+- 로그아웃은 연결 종료와 다르며 같은 TCP 연결을 유지한 채 인증 상태만 해제할 수 있습니다.
+- 상태를 해제할 때는 역순으로 정리해야 합니다: 월드 상태를 먼저 제거하고 인증 정보를 나중에 제거합니다.
+- 세션 재사용 시 이전 플레이어의 위치 같은 데이터가 다음 플레이어에게 이어지지 않도록 초기화해야 합니다.

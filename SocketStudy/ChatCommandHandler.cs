@@ -12,6 +12,7 @@ public sealed class ChatCommandHandler
         "/whoami",
         "/session",
         "/login <playerId>",
+        "/logout",
         "/pos",
         "/move <x> <y>",
         "/nearby",
@@ -277,6 +278,35 @@ public sealed class ChatCommandHandler
         // /login 명령에 플레이어 ID가 빠지면 사용법을 안내합니다.
         if (await SendUsageIfExactCommandAsync(connection, message.Text, "/login", LoginUsage))
         {
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        // /logout 명령은 인증 정보를 제거하고 익명 세션으로 돌아갑니다.
+        if (message.Text.Equals("/logout", StringComparison.OrdinalIgnoreCase))
+        {
+            // 월드에 스폰된 세션은 먼저 despawn해야 합니다.
+            if (connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 despawn이 먼저 필요하다고 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must despawn before logging out.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 로그인하지 않은 세션은 로그아웃할 인증 정보가 없습니다.
+            if (!connection.Session.IsAuthenticated)
+            {
+                // 보낸 사람에게만 현재 로그인 상태가 아니라고 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You are not logged in.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 인증 정보와 학습용 월드 위치를 초기화합니다.
+            connection.Session.Logout();
+            // 보낸 사람에게만 로그아웃 완료를 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, "Logged out.");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }
