@@ -57,6 +57,7 @@ await RunMoveWhenNotSpawnedCommandTestAsync();
 await RunMoveCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
+await RunTooFarMoveCommandTestAsync();
 await RunNearbyWhenNotSpawnedCommandTestAsync();
 await RunNearbyCommandTestAsync();
 await RunSpawnRequiresAuthenticationCommandTestAsync();
@@ -361,6 +362,16 @@ static void RunWorldRulesTest()
     if (WorldRules.IsNearby(WorldPosition.Origin, new WorldPosition(30, 0)))
     {
         throw new InvalidOperationException("WorldRules should reject positions outside view distance.");
+    }
+
+    if (!WorldRules.IsWithinMoveDistance(WorldPosition.Origin, new WorldPosition(4, 6)))
+    {
+        throw new InvalidOperationException("WorldRules should allow movement at the maximum move distance.");
+    }
+
+    if (WorldRules.IsWithinMoveDistance(WorldPosition.Origin, new WorldPosition(11, 0)))
+    {
+        throw new InvalidOperationException("WorldRules should reject movement beyond the maximum move distance.");
     }
 }
 
@@ -1137,19 +1148,19 @@ static async Task RunMoveCommandTestAsync()
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 10 20"));
+        new NetworkMessage(MessageType.Command, "/move 4 6"));
 
-    if (!handled || context.Connection.Session.Position != new WorldPosition(10, 20))
+    if (!handled || context.Connection.Session.Position != new WorldPosition(4, 6))
     {
         throw new InvalidOperationException("/move did not update the player session position.");
     }
 
-    if (context.SentMessages.Single().Text != "Moved to x=10, y=20")
+    if (context.SentMessages.Single().Text != "Moved to x=4, y=6")
     {
         throw new InvalidOperationException("/move did not return the expected notice.");
     }
 
-    if (context.NearbyNotices.Single() != "alice moved to x=10, y=20")
+    if (context.NearbyNotices.Single() != "alice moved to x=4, y=6")
     {
         throw new InvalidOperationException("/move did not notify nearby players.");
     }
@@ -1216,6 +1227,31 @@ static async Task RunOutOfBoundsMoveCommandTestAsync()
     if (context.SentMessages.Single().Text != "Position must be between -100 and 100.")
     {
         throw new InvalidOperationException("Out-of-bounds /move did not return the expected notice.");
+    }
+}
+
+static async Task RunTooFarMoveCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 11 0"));
+
+    if (!handled || context.Connection.Session.Position != WorldPosition.Origin)
+    {
+        throw new InvalidOperationException("Too-far /move should not update the player session position.");
+    }
+
+    if (context.SentMessages.Single().Text != "Move distance must be 10 or less.")
+    {
+        throw new InvalidOperationException("Too-far /move did not return the expected notice.");
+    }
+
+    if (context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Too-far /move should not notify nearby players.");
     }
 }
 

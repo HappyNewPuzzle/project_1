@@ -446,6 +446,15 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
+            // 현재 위치에서 한 번에 이동할 수 있는 거리인지 확인합니다.
+            if (!WorldRules.IsWithinMoveDistance(connection.Session.Position, nextPosition))
+            {
+                // 보낸 사람에게만 이동 거리 제한을 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, $"Move distance must be {WorldRules.MaxMoveDistance} or less.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
             // 세션 위치를 변경합니다.
             connection.Session.MoveTo(nextPosition);
             // 주변 플레이어에게 이동을 알립니다.
