@@ -101,10 +101,11 @@ public sealed class ClientRegistry
         // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
         lock (gate)
         {
-            // 같은 방에 있고 시야 거리 안에 있는 다른 클라이언트 이름만 정렬해서 반환합니다.
+            // 스폰 상태이며 같은 방과 시야 거리 안에 있는 다른 클라이언트 이름만 정렬해서 반환합니다.
             return clients
                 .Where(client =>
                     client != center &&
+                    client.Session.IsSpawned &&
                     string.Equals(client.RoomName, center.RoomName, StringComparison.OrdinalIgnoreCase) &&
                     WorldRules.IsNearby(client.Session.Position, center.Session.Position))
                 .Select(client => client.Name)
@@ -119,10 +120,11 @@ public sealed class ClientRegistry
         // 접속자 목록을 복사하는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
         lock (gate)
         {
-            // 같은 방에 있고 시야 거리 안에 있는 다른 클라이언트만 복사합니다.
+            // 스폰 상태이며 같은 방과 시야 거리 안에 있는 다른 클라이언트만 복사합니다.
             return clients
                 .Where(client =>
                     client != center &&
+                    client.Session.IsSpawned &&
                     string.Equals(client.RoomName, center.RoomName, StringComparison.OrdinalIgnoreCase) &&
                     WorldRules.IsNearby(client.Session.Position, center.Session.Position))
                 .ToArray();

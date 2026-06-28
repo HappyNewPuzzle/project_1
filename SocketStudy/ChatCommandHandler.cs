@@ -325,6 +325,15 @@ public sealed class ChatCommandHandler
         // /nearby 명령은 같은 방 안에서 시야 거리 안의 플레이어를 보여줍니다.
         if (message.Text.Equals("/nearby", StringComparison.OrdinalIgnoreCase))
         {
+            // 월드에 스폰되지 않은 세션은 주변 플레이어를 탐색할 수 없습니다.
+            if (!connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 탐색이 거부된 이유를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must spawn before checking nearby players.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
             // 현재 클라이언트 주변의 이름 목록을 가져옵니다.
             string[] nearbyNames = getNearbyNames(connection);
             // 아무도 없으면 읽기 쉬운 표시를 사용합니다.
