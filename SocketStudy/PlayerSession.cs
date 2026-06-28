@@ -30,6 +30,13 @@ public sealed class PlayerSession
     // 로그인 성공 후 플레이어 ID를 세션에 연결합니다.
     public void Authenticate(long playerId)
     {
+        // 이미 인증된 세션의 플레이어 ID가 바뀌지 않도록 막습니다.
+        if (IsAuthenticated)
+        {
+            // 세션의 정체성은 인증 후 다시 설정할 수 없습니다.
+            throw new InvalidOperationException("Player session is already authenticated.");
+        }
+
         // MMO 서버에서는 보통 1 이상의 ID를 실제 플레이어 ID로 사용합니다.
         if (playerId <= AnonymousPlayerId)
         {

@@ -1185,3 +1185,36 @@ spawned
 - 상태 전이(state transition)는 현재 상태에서 허용된 다음 상태로만 이동해야 합니다.
 - 같은 명령이 반복되어도 월드에 중복 엔티티나 중복 이벤트를 만들면 안 됩니다.
 - 검증, 상태 변경, 이벤트 전송의 순서를 명확히 유지해야 합니다.
+
+### 로그인 상태 전이 검증
+
+로그인 후 `/login`을 다시 실행해 `PlayerId`를 바꿀 수 있으면 월드에 존재하는 캐릭터의 정체성이 갑자기 달라질 수 있습니다.
+서버는 인증이 끝난 세션의 반복 로그인을 거부합니다.
+
+```text
+> /login 1001
+< [notice] Logged in as player 1001.
+
+> /login 2002
+< [notice] You are already logged in as player 1001.
+```
+
+특히 스폰된 상태에서는 월드 엔티티와 연결된 플레이어 ID를 절대 교체하지 않습니다.
+
+```text
+spawned player 1001
+-> /login 2002
+<- You cannot login while spawned.
+-> player id=1001, spawn=spawned 유지
+```
+
+검증은 두 계층에 적용했습니다.
+
+- `ChatCommandHandler`는 현재 상태에 맞는 안내 메시지를 클라이언트에 반환합니다.
+- `PlayerSession.Authenticate`는 서버 내부에서 실수로 반복 호출해도 기존 ID를 덮어쓰지 못하게 합니다.
+
+공부 포인트:
+
+- 세션의 인증 정체성은 월드 상태보다 먼저 확정되어야 합니다.
+- 명령 처리기의 검증과 도메인 객체의 불변 조건(invariant)은 서로 다른 방어선입니다.
+- 실패한 상태 전이는 기존 인증 정보와 월드 상태를 그대로 보존해야 합니다.

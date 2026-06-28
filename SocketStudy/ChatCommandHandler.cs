@@ -237,6 +237,24 @@ public sealed class ChatCommandHandler
         // /login 명령은 학습용으로 플레이어 ID를 세션에 연결합니다.
         if (message.Text.StartsWith("/login ", StringComparison.OrdinalIgnoreCase))
         {
+            // 월드에 스폰된 세션은 플레이어 정체성을 바꿀 수 없습니다.
+            if (connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 스폰 중에는 로그인할 수 없다고 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You cannot login while spawned.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 이미 로그인한 세션은 다른 플레이어 ID로 다시 로그인할 수 없습니다.
+            if (connection.Session.IsAuthenticated)
+            {
+                // 보낸 사람에게만 현재 로그인된 플레이어 ID를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, $"You are already logged in as player {connection.Session.PlayerId}.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
             // 명령 뒤쪽의 플레이어 ID 부분만 잘라냅니다.
             string rawPlayerId = message.Text["/login ".Length..].Trim();
             // 숫자 ID인지 확인합니다.

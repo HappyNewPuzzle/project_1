@@ -37,6 +37,8 @@ await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunSessionCommandTestAsync();
 await RunLoginCommandTestAsync();
+await RunDuplicateLoginCommandTestAsync();
+await RunLoginWhileSpawnedCommandTestAsync();
 await RunAuthenticatedSessionCommandTestAsync();
 await RunInvalidLoginCommandTestAsync();
 await RunMissingLoginCommandTestAsync();
@@ -239,6 +241,20 @@ static void RunPlayerSessionTest()
     if (!session.IsAuthenticated || session.PlayerId != 1001)
     {
         throw new InvalidOperationException("Player sessions should store authenticated player ids.");
+    }
+
+    try
+    {
+        session.Authenticate(2002);
+        throw new InvalidOperationException("Player sessions should reject repeated authentication.");
+    }
+    catch (InvalidOperationException exception) when (exception.Message == "Player session is already authenticated.")
+    {
+    }
+
+    if (session.PlayerId != 1001)
+    {
+        throw new InvalidOperationException("Repeated authentication should not replace the player id.");
     }
 
     session.MoveTo(new WorldPosition(10, 20));
@@ -737,6 +753,47 @@ static async Task RunAuthenticatedSessionCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Session: player-id=1001, state=authenticated, spawn=not-spawned")
     {
         throw new InvalidOperationException("/session did not return the expected authenticated session state.");
+    }
+}
+
+static async Task RunDuplicateLoginCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login 2002"));
+
+    if (!handled || context.SentMessages.Single().Text != "You are already logged in as player 1001.")
+    {
+        throw new InvalidOperationException("Duplicate /login did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.PlayerId != 1001)
+    {
+        throw new InvalidOperationException("Duplicate /login should not replace the authenticated player id.");
+    }
+}
+
+static async Task RunLoginWhileSpawnedCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1001);
+    context.Connection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login 2002"));
+
+    if (!handled || context.SentMessages.Single().Text != "You cannot login while spawned.")
+    {
+        throw new InvalidOperationException("Spawned /login did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.PlayerId != 1001 || !context.Connection.Session.IsSpawned)
+    {
+        throw new InvalidOperationException("Spawned /login should not change player identity or spawn state.");
     }
 }
 
