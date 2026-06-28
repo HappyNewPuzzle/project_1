@@ -275,6 +275,15 @@ public sealed class ChatCommandHandler
         // /move 명령은 학습용으로 플레이어 위치를 변경합니다.
         if (message.Text.StartsWith("/move ", StringComparison.OrdinalIgnoreCase))
         {
+            // 월드에 스폰되지 않은 세션은 위치를 변경할 수 없습니다.
+            if (!connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 이동이 거부된 이유를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must spawn before moving.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
             // 명령 뒤쪽의 좌표 두 개를 공백 기준으로 나눕니다.
             string[] parts = message.Text["/move ".Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
             // x, y 두 값이 있고 둘 다 정수인지 확인합니다.

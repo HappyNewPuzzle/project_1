@@ -41,6 +41,7 @@ await RunAuthenticatedSessionCommandTestAsync();
 await RunInvalidLoginCommandTestAsync();
 await RunMissingLoginCommandTestAsync();
 await RunPositionCommandTestAsync();
+await RunMoveWhenNotSpawnedCommandTestAsync();
 await RunMoveCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
@@ -777,6 +778,7 @@ static async Task RunPositionCommandTestAsync()
 static async Task RunMoveCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Spawn();
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
@@ -798,9 +800,34 @@ static async Task RunMoveCommandTestAsync()
     }
 }
 
+static async Task RunMoveWhenNotSpawnedCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 10 20"));
+
+    if (!handled || context.Connection.Session.Position != WorldPosition.Origin)
+    {
+        throw new InvalidOperationException("/move should not update an unspawned player position.");
+    }
+
+    if (context.SentMessages.Single().Text != "You must spawn before moving.")
+    {
+        throw new InvalidOperationException("/move did not explain that the player must spawn first.");
+    }
+
+    if (context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("/move should not notify nearby players when movement is rejected.");
+    }
+}
+
 static async Task RunInvalidMoveCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Spawn();
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
@@ -820,6 +847,7 @@ static async Task RunInvalidMoveCommandTestAsync()
 static async Task RunOutOfBoundsMoveCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Spawn();
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
