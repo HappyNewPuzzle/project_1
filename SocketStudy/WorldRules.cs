@@ -16,6 +16,9 @@ public static class WorldRules
     // 한 번의 이동 명령으로 허용할 최대 맨해튼 거리입니다.
     public const int MaxMoveDistance = 10;
 
+    // 연속 이동 명령 사이에 필요한 최소 서버 시간입니다.
+    public static readonly TimeSpan MoveCooldown = TimeSpan.FromSeconds(1);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {
@@ -40,6 +43,13 @@ public static class WorldRules
     {
         // 현재 위치와 다음 위치 사이의 거리를 이동 제한과 비교합니다.
         return GetDistance(current, next) <= MaxMoveDistance;
+    }
+
+    // 마지막 이동 이후 다음 이동을 허용할 시간이 지났는지 확인합니다.
+    public static bool IsMoveCooldownElapsed(DateTimeOffset? lastMoveAt, DateTimeOffset currentTime)
+    {
+        // 아직 이동한 적이 없거나 쿨다운 이상 시간이 지났으면 이동할 수 있습니다.
+        return lastMoveAt is null || currentTime - lastMoveAt.Value >= MoveCooldown;
     }
 
     // 두 월드 위치 사이의 맨해튼 거리를 계산합니다.

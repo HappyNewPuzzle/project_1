@@ -55,6 +55,7 @@ await RunInvalidWarpMapCommandTestAsync();
 await RunOutOfBoundsWarpCommandTestAsync();
 await RunMoveWhenNotSpawnedCommandTestAsync();
 await RunMoveCommandTestAsync();
+await RunMoveCooldownCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
 await RunTooFarMoveCommandTestAsync();
@@ -273,7 +274,13 @@ static void RunPlayerSessionTest()
         throw new InvalidOperationException("Repeated authentication should not replace the player id.");
     }
 
-    session.MoveTo(new WorldPosition(10, 20));
+    DateTimeOffset lastMoveAt = DateTimeOffset.UnixEpoch;
+    session.MoveTo(new WorldPosition(10, 20), lastMoveAt);
+
+    if (session.Position != new WorldPosition(10, 20) || session.LastMoveAt != lastMoveAt)
+    {
+        throw new InvalidOperationException("Player sessions should store approved movement position and time.");
+    }
 
     try
     {
@@ -291,9 +298,9 @@ static void RunPlayerSessionTest()
 
     session.ChangeMap(2);
 
-    if (session.Position != new WorldPosition(10, 20) || session.MapId != 2)
+    if (session.Position != new WorldPosition(10, 20) || session.MapId != 2 || session.LastMoveAt is not null)
     {
-        throw new InvalidOperationException("Player sessions should store moved positions and maps.");
+        throw new InvalidOperationException("Player sessions should store maps and reset old map movement time.");
     }
 
     session.Spawn();
@@ -372,6 +379,17 @@ static void RunWorldRulesTest()
     if (WorldRules.IsWithinMoveDistance(WorldPosition.Origin, new WorldPosition(11, 0)))
     {
         throw new InvalidOperationException("WorldRules should reject movement beyond the maximum move distance.");
+    }
+
+    DateTimeOffset movedAt = DateTimeOffset.UnixEpoch;
+    if (WorldRules.IsMoveCooldownElapsed(movedAt, movedAt.AddMilliseconds(999)))
+    {
+        throw new InvalidOperationException("WorldRules should reject movement before the cooldown elapses.");
+    }
+
+    if (!WorldRules.IsMoveCooldownElapsed(movedAt, movedAt.AddSeconds(1)))
+    {
+        throw new InvalidOperationException("WorldRules should allow movement when the cooldown elapses.");
     }
 }
 
@@ -1187,6 +1205,57 @@ static async Task RunMoveWhenNotSpawnedCommandTestAsync()
     if (context.NearbyNotices.Count != 0)
     {
         throw new InvalidOperationException("/move should not notify nearby players when movement is rejected.");
+    }
+}
+
+static async Task RunMoveCooldownCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Spawn();
+    DateTimeOffset firstMoveAt = new(2026, 6, 30, 10, 0, 0, TimeSpan.FromHours(9));
+    context.CurrentTime = firstMoveAt;
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 4 0"));
+
+    context.SentMessages.Clear();
+    context.NearbyNotices.Clear();
+    context.CurrentTime = firstMoveAt.AddMilliseconds(500);
+
+    bool rejected = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 8 0"));
+
+    if (!rejected || context.SentMessages.Single().Text != "You must wait 1 second between moves.")
+    {
+        throw new InvalidOperationException("Early repeated /move did not return the expected cooldown notice.");
+    }
+
+    if (context.Connection.Session.Position != new WorldPosition(4, 0) ||
+        context.Connection.Session.LastMoveAt != firstMoveAt ||
+        context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Rejected cooldown /move should preserve movement state.");
+    }
+
+    context.SentMessages.Clear();
+    context.CurrentTime = firstMoveAt.AddSeconds(1);
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 8 0"));
+
+    if (!handled || context.SentMessages.Single().Text != "Moved to x=8, y=0")
+    {
+        throw new InvalidOperationException("/move should succeed when the cooldown has elapsed.");
+    }
+
+    if (context.Connection.Session.Position != new WorldPosition(8, 0) ||
+        context.Connection.Session.LastMoveAt != context.CurrentTime ||
+        context.NearbyNotices.Single() != "alice moved to x=8, y=0")
+    {
+        throw new InvalidOperationException("Successful cooldown /move did not update movement state.");
     }
 }
 

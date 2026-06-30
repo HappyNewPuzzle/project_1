@@ -455,8 +455,19 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            // 세션 위치를 변경합니다.
-            connection.Session.MoveTo(nextPosition);
+            // 클라이언트 시간이 아닌 현재 서버 시간을 가져옵니다.
+            DateTimeOffset currentTime = getCurrentTime();
+            // 마지막 승인 이동 이후 최소 대기 시간이 지났는지 확인합니다.
+            if (!WorldRules.IsMoveCooldownElapsed(connection.Session.LastMoveAt, currentTime))
+            {
+                // 보낸 사람에게만 이동 쿨다운을 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must wait 1 second between moves.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 세션 위치와 마지막 승인 이동 시각을 함께 변경합니다.
+            connection.Session.MoveTo(nextPosition, currentTime);
             // 주변 플레이어에게 이동을 알립니다.
             await broadcastNearbyNoticeAsync(connection, $"{connection.Name} moved to {connection.Session.Position}");
             // 보낸 사람에게만 새 위치를 알려줍니다.

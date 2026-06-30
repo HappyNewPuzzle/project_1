@@ -16,6 +16,9 @@ public sealed class PlayerSession
     // 플레이어가 속한 현재 게임 맵 ID입니다.
     public int MapId { get; private set; }
 
+    // 서버가 승인한 마지막 일반 이동 시각입니다.
+    public DateTimeOffset? LastMoveAt { get; private set; }
+
     // 플레이어가 월드에 스폰되었는지 여부입니다.
     public bool IsSpawned { get; private set; }
 
@@ -28,6 +31,8 @@ public sealed class PlayerSession
         Position = WorldPosition.Origin;
         // 처음 맵은 학습용 기본 맵입니다.
         MapId = WorldRules.DefaultMapId;
+        // 새 세션에는 아직 승인된 이동 기록이 없습니다.
+        LastMoveAt = null;
         // 처음에는 아직 월드에 스폰되지 않았습니다.
         IsSpawned = false;
     }
@@ -60,6 +65,15 @@ public sealed class PlayerSession
         Position = position;
     }
 
+    // 서버가 승인한 일반 이동의 위치와 시각을 함께 저장합니다.
+    public void MoveTo(WorldPosition position, DateTimeOffset movedAt)
+    {
+        // 새 위치를 세션에 저장합니다.
+        Position = position;
+        // 이동 빈도 검증에 사용할 서버 시각을 저장합니다.
+        LastMoveAt = movedAt;
+    }
+
     // 스폰 전에 플레이어가 입장할 게임 맵을 변경합니다.
     public void ChangeMap(int mapId)
     {
@@ -79,6 +93,8 @@ public sealed class PlayerSession
 
         // 세션에 새 게임 맵 ID를 저장합니다.
         MapId = mapId;
+        // 새 맵에서는 이전 맵의 일반 이동 쿨다운을 이어받지 않습니다.
+        LastMoveAt = null;
     }
 
     // 플레이어를 현재 위치에 스폰된 상태로 바꿉니다.
@@ -111,5 +127,7 @@ public sealed class PlayerSession
         Position = WorldPosition.Origin;
         // 다음 로그인에 이전 맵이 이어지지 않도록 기본 맵으로 초기화합니다.
         MapId = WorldRules.DefaultMapId;
+        // 다음 로그인에 이전 이동 시각이 이어지지 않도록 초기화합니다.
+        LastMoveAt = null;
     }
 }
