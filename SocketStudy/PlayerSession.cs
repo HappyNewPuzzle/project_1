@@ -19,6 +19,9 @@ public sealed class PlayerSession
     // 서버가 승인한 마지막 일반 이동 시각입니다.
     public DateTimeOffset? LastMoveAt { get; private set; }
 
+    // 서버가 승인한 마지막 일반 이동 순서 번호입니다.
+    public long LastMoveSequence { get; private set; }
+
     // 플레이어가 월드에 스폰되었는지 여부입니다.
     public bool IsSpawned { get; private set; }
 
@@ -33,6 +36,8 @@ public sealed class PlayerSession
         MapId = WorldRules.DefaultMapId;
         // 새 세션에는 아직 승인된 이동 기록이 없습니다.
         LastMoveAt = null;
+        // 첫 이동은 0보다 큰 순서 번호부터 시작합니다.
+        LastMoveSequence = 0;
         // 처음에는 아직 월드에 스폰되지 않았습니다.
         IsSpawned = false;
     }
@@ -65,13 +70,29 @@ public sealed class PlayerSession
         Position = position;
     }
 
-    // 서버가 승인한 일반 이동의 위치와 시각을 함께 저장합니다.
-    public void MoveTo(WorldPosition position, DateTimeOffset movedAt)
+    // 새 이동 순서 번호가 마지막 승인 번호보다 큰지 확인합니다.
+    public bool CanAcceptMoveSequence(long sequence)
     {
+        // 중복되거나 과거에 처리한 번호는 허용하지 않습니다.
+        return sequence > LastMoveSequence;
+    }
+
+    // 서버가 승인한 일반 이동의 위치, 시각, 순서 번호를 함께 저장합니다.
+    public void MoveTo(WorldPosition position, DateTimeOffset movedAt, long sequence)
+    {
+        // 오래되거나 중복된 이동 번호가 내부 코드에서 저장되지 않도록 막습니다.
+        if (!CanAcceptMoveSequence(sequence))
+        {
+            // 마지막 승인 번호 이하의 이동은 세션 상태를 변경할 수 없습니다.
+            throw new ArgumentOutOfRangeException(nameof(sequence), "Move sequence must increase.");
+        }
+
         // 새 위치를 세션에 저장합니다.
         Position = position;
         // 이동 빈도 검증에 사용할 서버 시각을 저장합니다.
         LastMoveAt = movedAt;
+        // 중복 이동 검증에 사용할 순서 번호를 저장합니다.
+        LastMoveSequence = sequence;
     }
 
     // 스폰 전에 플레이어가 입장할 게임 맵을 변경합니다.
@@ -95,6 +116,8 @@ public sealed class PlayerSession
         MapId = mapId;
         // 새 맵에서는 이전 맵의 일반 이동 쿨다운을 이어받지 않습니다.
         LastMoveAt = null;
+        // 새 맵에서는 이동 순서 번호를 처음부터 다시 시작합니다.
+        LastMoveSequence = 0;
     }
 
     // 플레이어를 현재 위치에 스폰된 상태로 바꿉니다.
@@ -129,5 +152,7 @@ public sealed class PlayerSession
         MapId = WorldRules.DefaultMapId;
         // 다음 로그인에 이전 이동 시각이 이어지지 않도록 초기화합니다.
         LastMoveAt = null;
+        // 다음 로그인에 이전 이동 순서가 이어지지 않도록 초기화합니다.
+        LastMoveSequence = 0;
     }
 }

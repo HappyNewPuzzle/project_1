@@ -16,7 +16,7 @@ public sealed class ChatCommandHandler
         "/pos",
         "/map",
         "/warp <mapId> <x> <y>",
-        "/move <x> <y>",
+        "/move <sequence> <x> <y>",
         "/nearby",
         "/spawn",
         "/despawn",
@@ -63,7 +63,7 @@ public sealed class ChatCommandHandler
     private const string LoginUsage = "Usage: /login <playerId>";
 
     // /move 명령 사용법입니다.
-    private const string MoveUsage = "Usage: /move <x> <y>";
+    private const string MoveUsage = "Usage: /move <sequence> <x> <y>";
 
     // /warp 명령 사용법입니다.
     private const string WarpUsage = "Usage: /warp <mapId> <x> <y>";
@@ -425,13 +425,25 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            // 명령 뒤쪽의 좌표 두 개를 공백 기준으로 나눕니다.
+            // 명령 뒤쪽의 순서 번호와 좌표 두 개를 공백 기준으로 나눕니다.
             string[] parts = message.Text["/move ".Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            // x, y 두 값이 있고 둘 다 정수인지 확인합니다.
-            if (parts.Length != 2 || !int.TryParse(parts[0], out int x) || !int.TryParse(parts[1], out int y))
+            // sequence, x, y 세 값이 있고 모두 정수인지 확인합니다.
+            if (parts.Length != 3 ||
+                !long.TryParse(parts[0], out long sequence) ||
+                !int.TryParse(parts[1], out int x) ||
+                !int.TryParse(parts[2], out int y))
             {
                 // 보낸 사람에게만 사용법을 알려줍니다.
                 await sendToClientAsync(connection, MessageType.Notice, MoveUsage);
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 이미 처리했거나 그보다 오래된 이동 순서 번호인지 확인합니다.
+            if (!connection.Session.CanAcceptMoveSequence(sequence))
+            {
+                // 보낸 사람에게만 필요한 다음 순서 번호를 알려줍니다.
+                await sendToClientAsync(connection, MessageType.Notice, $"Move sequence must be greater than {connection.Session.LastMoveSequence}.");
                 // 명령을 처리했다고 호출자에게 알려줍니다.
                 return true;
             }
@@ -466,8 +478,8 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            // 세션 위치와 마지막 승인 이동 시각을 함께 변경합니다.
-            connection.Session.MoveTo(nextPosition, currentTime);
+            // 세션 위치와 마지막 승인 이동 시각 및 순서 번호를 함께 변경합니다.
+            connection.Session.MoveTo(nextPosition, currentTime, sequence);
             // 주변 플레이어에게 이동을 알립니다.
             await broadcastNearbyNoticeAsync(connection, $"{connection.Name} moved to {connection.Session.Position}");
             // 보낸 사람에게만 새 위치를 알려줍니다.
@@ -476,7 +488,7 @@ public sealed class ChatCommandHandler
             return true;
         }
 
-        // /move 명령에 좌표가 빠지면 사용법을 안내합니다.
+        // /move 명령에 인자가 빠지면 사용법을 안내합니다.
         if (await SendUsageIfExactCommandAsync(connection, message.Text, "/move", MoveUsage))
         {
             // 명령을 처리했다고 호출자에게 알려줍니다.

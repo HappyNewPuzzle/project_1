@@ -55,6 +55,7 @@ await RunInvalidWarpMapCommandTestAsync();
 await RunOutOfBoundsWarpCommandTestAsync();
 await RunMoveWhenNotSpawnedCommandTestAsync();
 await RunMoveCommandTestAsync();
+await RunRepeatedMoveSequenceCommandTestAsync();
 await RunMoveCooldownCommandTestAsync();
 await RunInvalidMoveCommandTestAsync();
 await RunOutOfBoundsMoveCommandTestAsync();
@@ -275,11 +276,22 @@ static void RunPlayerSessionTest()
     }
 
     DateTimeOffset lastMoveAt = DateTimeOffset.UnixEpoch;
-    session.MoveTo(new WorldPosition(10, 20), lastMoveAt);
+    session.MoveTo(new WorldPosition(10, 20), lastMoveAt, sequence: 1);
 
-    if (session.Position != new WorldPosition(10, 20) || session.LastMoveAt != lastMoveAt)
+    if (session.Position != new WorldPosition(10, 20) ||
+        session.LastMoveAt != lastMoveAt ||
+        session.LastMoveSequence != 1)
     {
-        throw new InvalidOperationException("Player sessions should store approved movement position and time.");
+        throw new InvalidOperationException("Player sessions should store approved movement state.");
+    }
+
+    try
+    {
+        session.MoveTo(new WorldPosition(11, 20), lastMoveAt.AddSeconds(1), sequence: 1);
+        throw new InvalidOperationException("Player sessions should reject repeated move sequences.");
+    }
+    catch (ArgumentOutOfRangeException exception) when (exception.ParamName == "sequence")
+    {
     }
 
     try
@@ -298,9 +310,12 @@ static void RunPlayerSessionTest()
 
     session.ChangeMap(2);
 
-    if (session.Position != new WorldPosition(10, 20) || session.MapId != 2 || session.LastMoveAt is not null)
+    if (session.Position != new WorldPosition(10, 20) ||
+        session.MapId != 2 ||
+        session.LastMoveAt is not null ||
+        session.LastMoveSequence != 0)
     {
-        throw new InvalidOperationException("Player sessions should store maps and reset old map movement time.");
+        throw new InvalidOperationException("Player sessions should reset old map movement tracking.");
     }
 
     session.Spawn();
@@ -1166,7 +1181,7 @@ static async Task RunMoveCommandTestAsync()
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 4 6"));
+        new NetworkMessage(MessageType.Command, "/move 1 4 6"));
 
     if (!handled || context.Connection.Session.Position != new WorldPosition(4, 6))
     {
@@ -1182,6 +1197,11 @@ static async Task RunMoveCommandTestAsync()
     {
         throw new InvalidOperationException("/move did not notify nearby players.");
     }
+
+    if (context.Connection.Session.LastMoveSequence != 1)
+    {
+        throw new InvalidOperationException("/move did not store the movement sequence.");
+    }
 }
 
 static async Task RunMoveWhenNotSpawnedCommandTestAsync()
@@ -1190,7 +1210,7 @@ static async Task RunMoveWhenNotSpawnedCommandTestAsync()
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 10 20"));
+        new NetworkMessage(MessageType.Command, "/move 1 10 20"));
 
     if (!handled || context.Connection.Session.Position != WorldPosition.Origin)
     {
@@ -1208,6 +1228,39 @@ static async Task RunMoveWhenNotSpawnedCommandTestAsync()
     }
 }
 
+static async Task RunRepeatedMoveSequenceCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Spawn();
+    DateTimeOffset firstMoveAt = new(2026, 7, 5, 10, 0, 0, TimeSpan.FromHours(9));
+    context.CurrentTime = firstMoveAt;
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 10 4 0"));
+
+    context.SentMessages.Clear();
+    context.NearbyNotices.Clear();
+    context.CurrentTime = firstMoveAt.AddSeconds(2);
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 10 8 0"));
+
+    if (!handled || context.SentMessages.Single().Text != "Move sequence must be greater than 10.")
+    {
+        throw new InvalidOperationException("Repeated move sequence did not return the expected notice.");
+    }
+
+    if (context.Connection.Session.Position != new WorldPosition(4, 0) ||
+        context.Connection.Session.LastMoveAt != firstMoveAt ||
+        context.Connection.Session.LastMoveSequence != 10 ||
+        context.NearbyNotices.Count != 0)
+    {
+        throw new InvalidOperationException("Repeated move sequence should preserve movement state.");
+    }
+}
+
 static async Task RunMoveCooldownCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -1217,7 +1270,7 @@ static async Task RunMoveCooldownCommandTestAsync()
 
     await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 4 0"));
+        new NetworkMessage(MessageType.Command, "/move 1 4 0"));
 
     context.SentMessages.Clear();
     context.NearbyNotices.Clear();
@@ -1225,7 +1278,7 @@ static async Task RunMoveCooldownCommandTestAsync()
 
     bool rejected = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 8 0"));
+        new NetworkMessage(MessageType.Command, "/move 2 8 0"));
 
     if (!rejected || context.SentMessages.Single().Text != "You must wait 1 second between moves.")
     {
@@ -1234,6 +1287,7 @@ static async Task RunMoveCooldownCommandTestAsync()
 
     if (context.Connection.Session.Position != new WorldPosition(4, 0) ||
         context.Connection.Session.LastMoveAt != firstMoveAt ||
+        context.Connection.Session.LastMoveSequence != 1 ||
         context.NearbyNotices.Count != 0)
     {
         throw new InvalidOperationException("Rejected cooldown /move should preserve movement state.");
@@ -1244,7 +1298,7 @@ static async Task RunMoveCooldownCommandTestAsync()
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 8 0"));
+        new NetworkMessage(MessageType.Command, "/move 2 8 0"));
 
     if (!handled || context.SentMessages.Single().Text != "Moved to x=8, y=0")
     {
@@ -1253,6 +1307,7 @@ static async Task RunMoveCooldownCommandTestAsync()
 
     if (context.Connection.Session.Position != new WorldPosition(8, 0) ||
         context.Connection.Session.LastMoveAt != context.CurrentTime ||
+        context.Connection.Session.LastMoveSequence != 2 ||
         context.NearbyNotices.Single() != "alice moved to x=8, y=0")
     {
         throw new InvalidOperationException("Successful cooldown /move did not update movement state.");
@@ -1273,7 +1328,7 @@ static async Task RunInvalidMoveCommandTestAsync()
         throw new InvalidOperationException("Invalid /move should not update the player session position.");
     }
 
-    if (context.SentMessages.Single().Text != "Usage: /move <x> <y>")
+    if (context.SentMessages.Single().Text != "Usage: /move <sequence> <x> <y>")
     {
         throw new InvalidOperationException("Invalid /move did not return the expected usage notice.");
     }
@@ -1286,7 +1341,7 @@ static async Task RunOutOfBoundsMoveCommandTestAsync()
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 101 0"));
+        new NetworkMessage(MessageType.Command, "/move 1 101 0"));
 
     if (!handled || context.Connection.Session.Position != WorldPosition.Origin)
     {
@@ -1306,7 +1361,7 @@ static async Task RunTooFarMoveCommandTestAsync()
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/move 11 0"));
+        new NetworkMessage(MessageType.Command, "/move 1 11 0"));
 
     if (!handled || context.Connection.Session.Position != WorldPosition.Origin)
     {
