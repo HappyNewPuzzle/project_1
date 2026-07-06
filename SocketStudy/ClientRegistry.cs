@@ -132,8 +132,10 @@ public sealed class ClientRegistry
                     client.Name,
                     client.Session.PlayerId,
                     client.Session.MapId,
-                    client.Session.Position))
-                .OrderBy(snapshot => snapshot.Name)
+                    client.Session.Position,
+                    WorldRules.GetDistance(center.Session.Position, client.Session.Position)))
+                .OrderBy(snapshot => snapshot.Distance)
+                .ThenBy(snapshot => snapshot.Name)
                 .ToArray();
         }
     }

@@ -858,7 +858,7 @@ public sealed class ChatCommandHandler
     private static string FormatNearbySnapshot(NearbyPlayerSnapshot snapshot)
     {
         // 나중에 실제 게임 패킷으로 바꾸기 쉽도록 필드 이름을 명확히 남깁니다.
-        return $"{snapshot.Name}[player-id={snapshot.PlayerId},map={snapshot.MapId},{snapshot.Position}]";
+        return $"{snapshot.Name}[player-id={snapshot.PlayerId},map={snapshot.MapId},{snapshot.Position},distance={snapshot.Distance}]";
     }
 
     private async Task<bool> SendUsageIfExactCommandAsync(

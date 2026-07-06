@@ -7,4 +7,6 @@ public readonly record struct NearbyPlayerSnapshot(
     // 플레이어가 존재하는 게임 맵 ID입니다.
     int MapId,
     // 해당 맵 안에서의 현재 위치입니다.
-    WorldPosition Position);
+    WorldPosition Position,
+    // 조회한 플레이어와의 맨해튼 거리입니다.
+    long Distance);

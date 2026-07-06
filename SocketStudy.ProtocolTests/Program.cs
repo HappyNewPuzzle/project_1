@@ -384,6 +384,11 @@ static void RunWorldRulesTest()
         throw new InvalidOperationException("WorldRules should treat close positions as nearby.");
     }
 
+    if (WorldRules.GetDistance(WorldPosition.Origin, new WorldPosition(10, -5)) != 15)
+    {
+        throw new InvalidOperationException("WorldRules should calculate Manhattan distance.");
+    }
+
     if (WorldRules.IsNearby(WorldPosition.Origin, new WorldPosition(30, 0)))
     {
         throw new InvalidOperationException("WorldRules should reject positions outside view distance.");
@@ -643,33 +648,46 @@ static async Task RunClientRegistryFindsNearbySnapshotsAsync()
     await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
     await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
     await using NetworkPair claraPair = await NetworkPair.ConnectAsync();
+    await using NetworkPair dylanPair = await NetworkPair.ConnectAsync();
     var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
     var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
     var clara = new ClientConnection("clara", claraPair.Client, claraPair.ClientStream);
+    var dylan = new ClientConnection("dylan", dylanPair.Client, dylanPair.ClientStream);
 
     alice.Session.Spawn();
     bob.Session.Authenticate(2002);
     bob.Session.MoveTo(new WorldPosition(10, 10));
     bob.Session.Spawn();
     clara.Session.Authenticate(3003);
-    clara.Session.ChangeMap(2);
-    clara.Session.MoveTo(new WorldPosition(5, 5));
+    clara.Session.MoveTo(new WorldPosition(2, 2));
     clara.Session.Spawn();
+    dylan.Session.Authenticate(4004);
+    dylan.Session.ChangeMap(2);
+    dylan.Session.MoveTo(new WorldPosition(5, 5));
+    dylan.Session.Spawn();
     registry.Add(alice);
     registry.Add(bob);
     registry.Add(clara);
+    registry.Add(dylan);
 
     NearbyPlayerSnapshot[] snapshots = registry.GetNearbySnapshots(alice);
 
-    if (snapshots.Length != 1 ||
-        snapshots[0].Name != "bob" ||
-        snapshots[0].PlayerId != 2002 ||
+    if (snapshots.Length != 2 ||
+        snapshots[0].Name != "clara" ||
+        snapshots[0].PlayerId != 3003 ||
         snapshots[0].MapId != WorldRules.DefaultMapId ||
-        snapshots[0].Position != new WorldPosition(10, 10))
+        snapshots[0].Position != new WorldPosition(2, 2) ||
+        snapshots[0].Distance != 4 ||
+        snapshots[1].Name != "bob" ||
+        snapshots[1].PlayerId != 2002 ||
+        snapshots[1].MapId != WorldRules.DefaultMapId ||
+        snapshots[1].Position != new WorldPosition(10, 10) ||
+        snapshots[1].Distance != 20)
     {
-        throw new InvalidOperationException("ClientRegistry did not return the expected nearby player snapshot state.");
+        throw new InvalidOperationException("ClientRegistry did not return nearby player snapshots ordered by distance.");
     }
 
+    clara.Session.Despawn();
     bob.Session.Despawn();
 
     if (registry.GetNearbySnapshots(alice).Length != 0)
@@ -1467,7 +1485,7 @@ static async Task RunLookCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/look"));
 
-    if (!handled || context.SentMessages.Single().Text != "Nearby snapshots (1): bob[player-id=2002,map=1,x=10, y=10]")
+    if (!handled || context.SentMessages.Single().Text != "Nearby snapshots (1): bob[player-id=2002,map=1,x=10, y=10,distance=20]")
     {
         throw new InvalidOperationException("/look did not return the expected nearby player snapshot.");
     }
@@ -2111,7 +2129,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
                 TargetConnection.Name,
                 TargetConnection.Session.PlayerId,
                 TargetConnection.Session.MapId,
-                TargetConnection.Session.Position)]
+                TargetConnection.Session.Position,
+                WorldRules.GetDistance(connection.Session.Position, TargetConnection.Session.Position))]
             : [];
     }
 

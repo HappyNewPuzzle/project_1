@@ -1421,7 +1421,7 @@ sequence는 `1`부터 시작하고 서버가 마지막으로 승인한 값보다
 
 ```text
 > /look
-< [notice] Nearby snapshots (1): bob[player-id=2002,map=1,x=10, y=10]
+< [notice] Nearby snapshots (1): bob[player-id=2002,map=1,x=10, y=10,distance=20]
 ```
 
 이 기능을 위해 `NearbyPlayerSnapshot` 타입을 만들었습니다.
@@ -1431,13 +1431,15 @@ public readonly record struct NearbyPlayerSnapshot(
     string Name,
     long PlayerId,
     int MapId,
-    WorldPosition Position);
+    WorldPosition Position,
+    long Distance);
 ```
 
 공부 포인트:
 
 - `/nearby`는 사람이 읽는 이름 목록에 가깝습니다.
 - `/look`은 클라이언트 화면에 엔티티를 그리기 위한 상태 복제 데이터에 가깝습니다.
+- `Distance`는 서버가 AOI 우선순위를 판단할 때 쓰는 거리 값입니다.
 - 지금은 텍스트 notice로 보내지만, 나중에는 `SpawnEntity`, `UpdatePosition`, `DespawnEntity` 같은 전용 패킷으로 바꿀 수 있습니다.
 - `ClientRegistry.GetNearbySnapshots`는 기존 AOI 조건과 같은 규칙을 사용합니다. 같은 맵, 스폰 상태, 시야 거리 안이라는 조건이 모두 맞아야 결과에 포함됩니다.
 

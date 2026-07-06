@@ -53,7 +53,7 @@ public static class WorldRules
     }
 
     // 두 월드 위치 사이의 맨해튼 거리를 계산합니다.
-    private static long GetDistance(WorldPosition first, WorldPosition second)
+    public static long GetDistance(WorldPosition first, WorldPosition second)
     {
         // long으로 변환해 큰 좌표의 뺄셈에서도 int 오버플로를 피합니다.
         return Math.Abs((long)first.X - second.X) + Math.Abs((long)first.Y - second.Y);
