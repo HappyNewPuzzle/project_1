@@ -24,6 +24,7 @@ RunClientRegistryIncludesDefaultRoom();
 await RunClientRegistryFiltersRoomsAsync();
 await RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync();
 await RunClientRegistryFindsNearbyNamesAsync();
+await RunClientRegistryFindsNearbySnapshotsAsync();
 await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
 await RunCommandsAliasTestAsync();
@@ -62,6 +63,8 @@ await RunOutOfBoundsMoveCommandTestAsync();
 await RunTooFarMoveCommandTestAsync();
 await RunNearbyWhenNotSpawnedCommandTestAsync();
 await RunNearbyCommandTestAsync();
+await RunLookWhenNotSpawnedCommandTestAsync();
+await RunLookCommandTestAsync();
 await RunSpawnRequiresAuthenticationCommandTestAsync();
 await RunSpawnCommandTestAsync();
 await RunDuplicateSpawnCommandTestAsync();
@@ -631,6 +634,47 @@ static async Task RunClientRegistryFindsNearbyNamesAsync()
     if (registry.GetNearbyNames(alice).Length != 0 || registry.SnapshotNearby(alice).Length != 0)
     {
         throw new InvalidOperationException("ClientRegistry should exclude nearby clients that are not spawned.");
+    }
+}
+
+static async Task RunClientRegistryFindsNearbySnapshotsAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    await using NetworkPair claraPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+    var clara = new ClientConnection("clara", claraPair.Client, claraPair.ClientStream);
+
+    alice.Session.Spawn();
+    bob.Session.Authenticate(2002);
+    bob.Session.MoveTo(new WorldPosition(10, 10));
+    bob.Session.Spawn();
+    clara.Session.Authenticate(3003);
+    clara.Session.ChangeMap(2);
+    clara.Session.MoveTo(new WorldPosition(5, 5));
+    clara.Session.Spawn();
+    registry.Add(alice);
+    registry.Add(bob);
+    registry.Add(clara);
+
+    NearbyPlayerSnapshot[] snapshots = registry.GetNearbySnapshots(alice);
+
+    if (snapshots.Length != 1 ||
+        snapshots[0].Name != "bob" ||
+        snapshots[0].PlayerId != 2002 ||
+        snapshots[0].MapId != WorldRules.DefaultMapId ||
+        snapshots[0].Position != new WorldPosition(10, 10))
+    {
+        throw new InvalidOperationException("ClientRegistry did not return the expected nearby player snapshot state.");
+    }
+
+    bob.Session.Despawn();
+
+    if (registry.GetNearbySnapshots(alice).Length != 0)
+    {
+        throw new InvalidOperationException("ClientRegistry should exclude despawned players from nearby snapshots.");
     }
 }
 
@@ -1411,6 +1455,39 @@ static async Task RunNearbyWhenNotSpawnedCommandTestAsync()
     }
 }
 
+static async Task RunLookCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Spawn();
+    context.TargetConnection.Session.Authenticate(2002);
+    context.TargetConnection.Session.MoveTo(new WorldPosition(10, 10));
+    context.TargetConnection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/look"));
+
+    if (!handled || context.SentMessages.Single().Text != "Nearby snapshots (1): bob[player-id=2002,map=1,x=10, y=10]")
+    {
+        throw new InvalidOperationException("/look did not return the expected nearby player snapshot.");
+    }
+}
+
+static async Task RunLookWhenNotSpawnedCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.TargetConnection.Session.Spawn();
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/look"));
+
+    if (!handled || context.SentMessages.Single().Text != "You must spawn before looking around.")
+    {
+        throw new InvalidOperationException("/look should explain that the player must spawn first.");
+    }
+}
+
 static async Task RunSpawnCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -1961,6 +2038,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             () => ["lobby", "study"],
             roomName => roomName == "study" ? ["alice"] : [],
             GetNearbyNames,
+            GetNearbySnapshots,
             IsNameInUse,
             FindClientByName,
             MoveClientToRoomAsync,
@@ -2021,6 +2099,19 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             connection.Session.MapId == TargetConnection.Session.MapId &&
             WorldRules.IsNearby(connection.Session.Position, TargetConnection.Session.Position)
             ? [TargetConnection.Name]
+            : [];
+    }
+
+    private NearbyPlayerSnapshot[] GetNearbySnapshots(ClientConnection connection)
+    {
+        return TargetConnection.Session.IsSpawned &&
+            connection.Session.MapId == TargetConnection.Session.MapId &&
+            WorldRules.IsNearby(connection.Session.Position, TargetConnection.Session.Position)
+            ? [new NearbyPlayerSnapshot(
+                TargetConnection.Name,
+                TargetConnection.Session.PlayerId,
+                TargetConnection.Session.MapId,
+                TargetConnection.Session.Position)]
             : [];
     }
 

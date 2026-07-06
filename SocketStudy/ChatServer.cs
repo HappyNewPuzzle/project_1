@@ -26,6 +26,7 @@ sealed class ChatServer
             clients.GetRoomNames,
             clients.GetNamesInRoom,
             clients.GetNearbyNames,
+            clients.GetNearbySnapshots,
             clients.IsNameInUse,
             clients.FindByName,
             MoveClientToRoomAsync,

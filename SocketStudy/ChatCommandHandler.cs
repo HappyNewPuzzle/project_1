@@ -18,6 +18,7 @@ public sealed class ChatCommandHandler
         "/warp <mapId> <x> <y>",
         "/move <sequence> <x> <y>",
         "/nearby",
+        "/look",
         "/spawn",
         "/despawn",
         "/users",
@@ -92,6 +93,9 @@ public sealed class ChatCommandHandler
     // 현재 클라이언트 주변의 접속자 이름 목록을 가져오는 함수입니다.
     private readonly Func<ClientConnection, string[]> getNearbyNames;
 
+    // 현재 클라이언트 주변의 플레이어 상태 스냅샷을 가져오는 함수입니다.
+    private readonly Func<ClientConnection, NearbyPlayerSnapshot[]> getNearbySnapshots;
+
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 함수입니다.
     private readonly Func<string, ClientConnection, bool> isNameInUse;
 
@@ -117,6 +121,7 @@ public sealed class ChatCommandHandler
         Func<string[]> getRoomNames,
         Func<string, string[]> getClientNamesInRoom,
         Func<ClientConnection, string[]> getNearbyNames,
+        Func<ClientConnection, NearbyPlayerSnapshot[]> getNearbySnapshots,
         Func<string, ClientConnection, bool> isNameInUse,
         Func<string, ClientConnection?> findClientByName,
         Func<ClientConnection, string, Task> moveClientToRoomAsync,
@@ -139,6 +144,8 @@ public sealed class ChatCommandHandler
         this.getClientNamesInRoom = getClientNamesInRoom;
         // 주변 접속자 이름 조회 함수를 저장합니다.
         this.getNearbyNames = getNearbyNames;
+        // 주변 플레이어 상태 스냅샷 조회 함수를 저장합니다.
+        this.getNearbySnapshots = getNearbySnapshots;
         // 이름 중복 확인 함수를 저장합니다.
         this.isNameInUse = isNameInUse;
         // 이름 기반 클라이언트 조회 함수를 저장합니다.
@@ -518,6 +525,30 @@ public sealed class ChatCommandHandler
         }
 
         // /spawn 명령은 현재 위치에 플레이어가 나타났다는 사실을 주변 플레이어에게 알립니다.
+        // /look 명령은 주변 플레이어의 이름뿐 아니라 맵과 위치 상태까지 보여줍니다.
+        if (message.Text.Equals("/look", StringComparison.OrdinalIgnoreCase))
+        {
+            // 월드에 스폰되지 않은 세션은 주변 월드 상태를 조회할 수 없습니다.
+            if (!connection.Session.IsSpawned)
+            {
+                // 보낸 사람에게만 스폰이 필요하다는 안내를 보냅니다.
+                await sendToClientAsync(connection, MessageType.Notice, "You must spawn before looking around.");
+                // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            // 현재 클라이언트 주변의 플레이어 상태 스냅샷을 가져옵니다.
+            NearbyPlayerSnapshot[] snapshots = getNearbySnapshots(connection);
+            // 비어 있는 결과도 사람이 읽기 쉬운 고정 문구로 표시합니다.
+            string displaySnapshots = snapshots.Length == 0
+                ? "(none)"
+                : string.Join(", ", snapshots.Select(FormatNearbySnapshot));
+            // 보낸 사람에게만 주변 상태 스냅샷을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Nearby snapshots ({snapshots.Length}): {displaySnapshots}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
         if (message.Text.Equals("/spawn", StringComparison.OrdinalIgnoreCase))
         {
             // 로그인하지 않은 세션은 월드에 스폰할 수 없습니다.
@@ -823,6 +854,13 @@ public sealed class ChatCommandHandler
     }
 
     // 인자 없이 명령만 입력된 경우 사용법을 보냅니다.
+    // 주변 플레이어 스냅샷을 클라이언트가 읽기 쉬운 한 줄 문자열로 바꿉니다.
+    private static string FormatNearbySnapshot(NearbyPlayerSnapshot snapshot)
+    {
+        // 나중에 실제 게임 패킷으로 바꾸기 쉽도록 필드 이름을 명확히 남깁니다.
+        return $"{snapshot.Name}[player-id={snapshot.PlayerId},map={snapshot.MapId},{snapshot.Position}]";
+    }
+
     private async Task<bool> SendUsageIfExactCommandAsync(
         ClientConnection connection,
         string text,
