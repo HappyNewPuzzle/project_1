@@ -1442,5 +1442,6 @@ public readonly record struct NearbyPlayerSnapshot(
 - `Distance`는 서버가 AOI 우선순위를 판단할 때 쓰는 거리 값입니다.
 - 지금은 텍스트 notice로 보내지만, 나중에는 `SpawnEntity`, `UpdatePosition`, `DespawnEntity` 같은 전용 패킷으로 바꿀 수 있습니다.
 - `ClientRegistry.GetNearbySnapshots`는 기존 AOI 조건과 같은 규칙을 사용합니다. 같은 맵, 스폰 상태, 시야 거리 안이라는 조건이 모두 맞아야 결과에 포함됩니다.
+- `/look`은 가까운 플레이어부터 최대 10명까지만 보여줍니다. 사람이 너무 많이 몰린 지역에서 모든 엔티티를 한 번에 보내지 않기 위한 작은 대역폭 보호 장치입니다.
 
-이번 step은 "주변에 누가 있는가?"에서 "주변 엔티티가 어떤 상태인가?"로 넘어가는 작은 다리입니다. MMO RPG 서버에서는 이 스냅샷이 캐릭터, 몬스터, NPC, 아이템 상태 복제의 출발점이 됩니다.
+이번 step은 “주변에 누가 있는가?”에서 “주변 엔티티가 어떤 상태인가?”로 넘어가는 작은 다리입니다. MMO RPG 서버에서는 이 스냅샷이 캐릭터, 몬스터, NPC, 아이템 상태 복제의 출발점이 됩니다.

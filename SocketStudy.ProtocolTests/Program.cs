@@ -25,6 +25,7 @@ await RunClientRegistryFiltersRoomsAsync();
 await RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync();
 await RunClientRegistryFindsNearbyNamesAsync();
 await RunClientRegistryFindsNearbySnapshotsAsync();
+await RunClientRegistryLimitsNearbySnapshotsAsync();
 await RunClientRegistryDrainsConnectionsAsync();
 await RunHelpCommandTestAsync();
 await RunCommandsAliasTestAsync();
@@ -394,6 +395,11 @@ static void RunWorldRulesTest()
         throw new InvalidOperationException("WorldRules should reject positions outside view distance.");
     }
 
+    if (WorldRules.MaxNearbySnapshotCount != 10)
+    {
+        throw new InvalidOperationException("WorldRules should keep the expected nearby snapshot limit.");
+    }
+
     if (!WorldRules.IsWithinMoveDistance(WorldPosition.Origin, new WorldPosition(4, 6)))
     {
         throw new InvalidOperationException("WorldRules should allow movement at the maximum move distance.");
@@ -693,6 +699,54 @@ static async Task RunClientRegistryFindsNearbySnapshotsAsync()
     if (registry.GetNearbySnapshots(alice).Length != 0)
     {
         throw new InvalidOperationException("ClientRegistry should exclude despawned players from nearby snapshots.");
+    }
+}
+
+static async Task RunClientRegistryLimitsNearbySnapshotsAsync()
+{
+    var registry = new ClientRegistry();
+    var pairs = new List<NetworkPair>();
+
+    try
+    {
+        NetworkPair alicePair = await NetworkPair.ConnectAsync();
+        pairs.Add(alicePair);
+        var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+        alice.Session.Spawn();
+        registry.Add(alice);
+
+        for (int index = 1; index <= WorldRules.MaxNearbySnapshotCount + 2; index++)
+        {
+            NetworkPair pair = await NetworkPair.ConnectAsync();
+            pairs.Add(pair);
+            var client = new ClientConnection($"player{index:D2}", pair.Client, pair.ClientStream);
+            client.Session.Authenticate(1000 + index);
+            client.Session.MoveTo(new WorldPosition(index, 0));
+            client.Session.Spawn();
+            registry.Add(client);
+        }
+
+        NearbyPlayerSnapshot[] snapshots = registry.GetNearbySnapshots(alice);
+
+        if (snapshots.Length != WorldRules.MaxNearbySnapshotCount)
+        {
+            throw new InvalidOperationException("ClientRegistry should limit nearby snapshot count.");
+        }
+
+        if (snapshots[0].Name != "player01" ||
+            snapshots[0].Distance != 1 ||
+            snapshots[^1].Name != "player10" ||
+            snapshots[^1].Distance != 10)
+        {
+            throw new InvalidOperationException("ClientRegistry should keep the nearest nearby snapshots first.");
+        }
+    }
+    finally
+    {
+        foreach (NetworkPair pair in pairs)
+        {
+            await pair.DisposeAsync();
+        }
     }
 }
 

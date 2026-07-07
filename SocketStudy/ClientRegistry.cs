@@ -136,6 +136,7 @@ public sealed class ClientRegistry
                     WorldRules.GetDistance(center.Session.Position, client.Session.Position)))
                 .OrderBy(snapshot => snapshot.Distance)
                 .ThenBy(snapshot => snapshot.Name)
+                .Take(WorldRules.MaxNearbySnapshotCount)
                 .ToArray();
         }
     }

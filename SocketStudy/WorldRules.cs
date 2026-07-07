@@ -14,6 +14,9 @@ public static class WorldRules
     public const int ViewDistance = 25;
 
     // 한 번의 이동 명령으로 허용할 최대 맨해튼 거리입니다.
+    // 한 번의 주변 상태 스냅샷 응답에 담을 최대 플레이어 수입니다.
+    public const int MaxNearbySnapshotCount = 10;
+
     public const int MaxMoveDistance = 10;
 
     // 연속 이동 명령 사이에 필요한 최소 서버 시간입니다.
