@@ -116,13 +116,13 @@ public sealed class ClientRegistry
 
     // 같은 게임 맵에서 현재 클라이언트 주변에 있는 접속자 목록을 복사합니다.
     // 같은 게임 맵에서 현재 클라이언트 주변에 있는 플레이어 상태 스냅샷을 가져옵니다.
-    public NearbyPlayerSnapshot[] GetNearbySnapshots(ClientConnection center)
+    public NearbySnapshotResult GetNearbySnapshots(ClientConnection center)
     {
         // 접속 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
         lock (gate)
         {
             // 이름뿐 아니라 플레이어 ID, 맵, 위치까지 복사해서 클라이언트에 보낼 수 있는 형태로 만듭니다.
-            return clients
+            NearbyPlayerSnapshot[] allSnapshots = clients
                 .Where(client =>
                     client != center &&
                     client.Session.IsSpawned &&
@@ -136,8 +136,13 @@ public sealed class ClientRegistry
                     WorldRules.GetDistance(center.Session.Position, client.Session.Position)))
                 .OrderBy(snapshot => snapshot.Distance)
                 .ThenBy(snapshot => snapshot.Name)
+                .ToArray();
+
+            NearbyPlayerSnapshot[] visibleSnapshots = allSnapshots
                 .Take(WorldRules.MaxNearbySnapshotCount)
                 .ToArray();
+
+            return new NearbySnapshotResult(visibleSnapshots, allSnapshots.Length);
         }
     }
 

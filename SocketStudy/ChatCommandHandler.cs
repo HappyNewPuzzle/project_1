@@ -94,7 +94,7 @@ public sealed class ChatCommandHandler
     private readonly Func<ClientConnection, string[]> getNearbyNames;
 
     // 현재 클라이언트 주변의 플레이어 상태 스냅샷을 가져오는 함수입니다.
-    private readonly Func<ClientConnection, NearbyPlayerSnapshot[]> getNearbySnapshots;
+    private readonly Func<ClientConnection, NearbySnapshotResult> getNearbySnapshots;
 
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인하는 함수입니다.
     private readonly Func<string, ClientConnection, bool> isNameInUse;
@@ -121,7 +121,7 @@ public sealed class ChatCommandHandler
         Func<string[]> getRoomNames,
         Func<string, string[]> getClientNamesInRoom,
         Func<ClientConnection, string[]> getNearbyNames,
-        Func<ClientConnection, NearbyPlayerSnapshot[]> getNearbySnapshots,
+        Func<ClientConnection, NearbySnapshotResult> getNearbySnapshots,
         Func<string, ClientConnection, bool> isNameInUse,
         Func<string, ClientConnection?> findClientByName,
         Func<ClientConnection, string, Task> moveClientToRoomAsync,
@@ -538,13 +538,14 @@ public sealed class ChatCommandHandler
             }
 
             // 현재 클라이언트 주변의 플레이어 상태 스냅샷을 가져옵니다.
-            NearbyPlayerSnapshot[] snapshots = getNearbySnapshots(connection);
+            NearbySnapshotResult snapshotResult = getNearbySnapshots(connection);
+            NearbyPlayerSnapshot[] snapshots = snapshotResult.Snapshots;
             // 비어 있는 결과도 사람이 읽기 쉬운 고정 문구로 표시합니다.
             string displaySnapshots = snapshots.Length == 0
                 ? "(none)"
                 : string.Join(", ", snapshots.Select(FormatNearbySnapshot));
             // 보낸 사람에게만 주변 상태 스냅샷을 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, $"Nearby snapshots ({snapshots.Length}): {displaySnapshots}");
+            await sendToClientAsync(connection, MessageType.Notice, $"Nearby snapshots ({snapshots.Length}/{snapshotResult.TotalCount}, hidden={snapshotResult.HiddenCount}): {displaySnapshots}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
             return true;
         }

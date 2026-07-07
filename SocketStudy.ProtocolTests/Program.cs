@@ -676,9 +676,12 @@ static async Task RunClientRegistryFindsNearbySnapshotsAsync()
     registry.Add(clara);
     registry.Add(dylan);
 
-    NearbyPlayerSnapshot[] snapshots = registry.GetNearbySnapshots(alice);
+    NearbySnapshotResult snapshotResult = registry.GetNearbySnapshots(alice);
+    NearbyPlayerSnapshot[] snapshots = snapshotResult.Snapshots;
 
-    if (snapshots.Length != 2 ||
+    if (snapshotResult.TotalCount != 2 ||
+        snapshotResult.HiddenCount != 0 ||
+        snapshots.Length != 2 ||
         snapshots[0].Name != "clara" ||
         snapshots[0].PlayerId != 3003 ||
         snapshots[0].MapId != WorldRules.DefaultMapId ||
@@ -696,7 +699,10 @@ static async Task RunClientRegistryFindsNearbySnapshotsAsync()
     clara.Session.Despawn();
     bob.Session.Despawn();
 
-    if (registry.GetNearbySnapshots(alice).Length != 0)
+    NearbySnapshotResult emptySnapshotResult = registry.GetNearbySnapshots(alice);
+    if (emptySnapshotResult.TotalCount != 0 ||
+        emptySnapshotResult.HiddenCount != 0 ||
+        emptySnapshotResult.Snapshots.Length != 0)
     {
         throw new InvalidOperationException("ClientRegistry should exclude despawned players from nearby snapshots.");
     }
@@ -726,9 +732,12 @@ static async Task RunClientRegistryLimitsNearbySnapshotsAsync()
             registry.Add(client);
         }
 
-        NearbyPlayerSnapshot[] snapshots = registry.GetNearbySnapshots(alice);
+        NearbySnapshotResult snapshotResult = registry.GetNearbySnapshots(alice);
+        NearbyPlayerSnapshot[] snapshots = snapshotResult.Snapshots;
 
-        if (snapshots.Length != WorldRules.MaxNearbySnapshotCount)
+        if (snapshotResult.TotalCount != WorldRules.MaxNearbySnapshotCount + 2 ||
+            snapshotResult.HiddenCount != 2 ||
+            snapshots.Length != WorldRules.MaxNearbySnapshotCount)
         {
             throw new InvalidOperationException("ClientRegistry should limit nearby snapshot count.");
         }
@@ -1539,7 +1548,7 @@ static async Task RunLookCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/look"));
 
-    if (!handled || context.SentMessages.Single().Text != "Nearby snapshots (1): bob[player-id=2002,map=1,x=10, y=10,distance=20]")
+    if (!handled || context.SentMessages.Single().Text != "Nearby snapshots (1/1, hidden=0): bob[player-id=2002,map=1,x=10, y=10,distance=20]")
     {
         throw new InvalidOperationException("/look did not return the expected nearby player snapshot.");
     }
@@ -2174,9 +2183,9 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             : [];
     }
 
-    private NearbyPlayerSnapshot[] GetNearbySnapshots(ClientConnection connection)
+    private NearbySnapshotResult GetNearbySnapshots(ClientConnection connection)
     {
-        return TargetConnection.Session.IsSpawned &&
+        NearbyPlayerSnapshot[] snapshots = TargetConnection.Session.IsSpawned &&
             connection.Session.MapId == TargetConnection.Session.MapId &&
             WorldRules.IsNearby(connection.Session.Position, TargetConnection.Session.Position)
             ? [new NearbyPlayerSnapshot(
@@ -2186,6 +2195,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
                 TargetConnection.Session.Position,
                 WorldRules.GetDistance(connection.Session.Position, TargetConnection.Session.Position))]
             : [];
+
+        return new NearbySnapshotResult(snapshots, snapshots.Length);
     }
 
     private Task MoveClientToRoomAsync(ClientConnection connection, string roomName)

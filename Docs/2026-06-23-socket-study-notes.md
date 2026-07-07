@@ -1421,7 +1421,7 @@ sequence는 `1`부터 시작하고 서버가 마지막으로 승인한 값보다
 
 ```text
 > /look
-< [notice] Nearby snapshots (1): bob[player-id=2002,map=1,x=10, y=10,distance=20]
+< [notice] Nearby snapshots (1/1, hidden=0): bob[player-id=2002,map=1,x=10, y=10,distance=20]
 ```
 
 이 기능을 위해 `NearbyPlayerSnapshot` 타입을 만들었습니다.
@@ -1443,5 +1443,6 @@ public readonly record struct NearbyPlayerSnapshot(
 - 지금은 텍스트 notice로 보내지만, 나중에는 `SpawnEntity`, `UpdatePosition`, `DespawnEntity` 같은 전용 패킷으로 바꿀 수 있습니다.
 - `ClientRegistry.GetNearbySnapshots`는 기존 AOI 조건과 같은 규칙을 사용합니다. 같은 맵, 스폰 상태, 시야 거리 안이라는 조건이 모두 맞아야 결과에 포함됩니다.
 - `/look`은 가까운 플레이어부터 최대 10명까지만 보여줍니다. 사람이 너무 많이 몰린 지역에서 모든 엔티티를 한 번에 보내지 않기 위한 작은 대역폭 보호 장치입니다.
+- `/look`의 `(보이는 수/전체 수, hidden=생략 수)` 표기는 제한 때문에 몇 명이 응답에서 빠졌는지 알려줍니다.
 
 이번 step은 “주변에 누가 있는가?”에서 “주변 엔티티가 어떤 상태인가?”로 넘어가는 작은 다리입니다. MMO RPG 서버에서는 이 스냅샷이 캐릭터, 몬스터, NPC, 아이템 상태 복제의 출발점이 됩니다.
