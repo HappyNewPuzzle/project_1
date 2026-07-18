@@ -22,6 +22,8 @@ public sealed class ChatCommandHandler
         "/look",
         "/spawn",
         "/despawn",
+        "/spawn-monster <id> <type> <x> <y>",
+        "/monsters",
         "/users",
         "/rooms",
         "/room-users",
@@ -69,6 +71,8 @@ public sealed class ChatCommandHandler
 
     // /warp 명령 사용법입니다.
     private const string WarpUsage = "Usage: /warp <mapId> <x> <y>";
+
+    private const string SpawnMonsterUsage = "Usage: /spawn-monster <id> <type> <x> <y>";
 
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
@@ -123,6 +127,8 @@ public sealed class ChatCommandHandler
 
     private readonly Action<ClientConnection> refreshWorldIndex;
 
+    private readonly MonsterRegistry monsters;
+
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
@@ -143,7 +149,8 @@ public sealed class ChatCommandHandler
         MovementRequestQueue movementRequests,
         WorldTickProcessor worldTickProcessor,
         WorldEventQueue worldEvents,
-        Action<ClientConnection> refreshWorldIndex)
+        Action<ClientConnection> refreshWorldIndex,
+        MonsterRegistry monsters)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -179,6 +186,7 @@ public sealed class ChatCommandHandler
         this.worldTickProcessor = worldTickProcessor;
         this.worldEvents = worldEvents;
         this.refreshWorldIndex = refreshWorldIndex;
+        this.monsters = monsters;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -586,6 +594,82 @@ public sealed class ChatCommandHandler
             // 보낸 사람에게만 주변 플레이어 목록을 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Nearby players ({nearbyNames.Length}): {displayNames}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        if (message.Text.StartsWith("/spawn-monster ", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!connection.Session.IsSpawned)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "You must spawn before spawning monsters.");
+                return true;
+            }
+
+            string[] parts = message.Text["/spawn-monster ".Length..]
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 4 ||
+                !long.TryParse(parts[0], out long monsterId) ||
+                !int.TryParse(parts[2], out int x) ||
+                !int.TryParse(parts[3], out int y))
+            {
+                await sendToClientAsync(connection, MessageType.Notice, SpawnMonsterUsage);
+                return true;
+            }
+
+            string monsterType = parts[1];
+            var position = new WorldPosition(x, y);
+            if (monsterId <= 0)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "Monster id must be positive.");
+                return true;
+            }
+
+            if (monsterType.Length > NameRules.MaxNameLength || !NameRules.HasOnlyAllowedCharacters(monsterType))
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "Monster type must use valid nickname characters and be 20 characters or fewer.");
+                return true;
+            }
+
+            if (!WorldRules.IsInsideWorld(position))
+            {
+                await sendToClientAsync(connection, MessageType.Notice, $"Position must be between {WorldRules.MinCoordinate} and {WorldRules.MaxCoordinate}.");
+                return true;
+            }
+
+            var monster = new MonsterEntity(
+                monsterId,
+                monsterType,
+                connection.Session.MapId,
+                position);
+            if (!monsters.TrySpawn(monster))
+            {
+                await sendToClientAsync(connection, MessageType.Notice, $"Monster id is already in use: {monsterId}");
+                return true;
+            }
+
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Spawned monster {monster.MonsterType}#{monster.MonsterId} at map={monster.MapId}, {monster.Position}");
+            return true;
+        }
+
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/spawn-monster", SpawnMonsterUsage))
+        {
+            return true;
+        }
+
+        if (message.Text.Equals("/monsters", StringComparison.OrdinalIgnoreCase))
+        {
+            MonsterEntity[] mapMonsters = monsters.SnapshotMap(connection.Session.MapId);
+            string displayMonsters = mapMonsters.Length == 0
+                ? "(none)"
+                : string.Join(", ", mapMonsters.Select(monster =>
+                    $"{monster.MonsterType}#{monster.MonsterId}@{monster.Position}"));
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Monsters in map {connection.Session.MapId} ({mapMonsters.Length}): {displayMonsters}");
             return true;
         }
 

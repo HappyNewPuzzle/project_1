@@ -13,6 +13,8 @@ sealed class ChatServer
 
     private readonly WorldEventQueue worldEvents = new();
 
+    private readonly MonsterRegistry monsters = new();
+
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
 
@@ -43,7 +45,8 @@ sealed class ChatServer
             movementRequests,
             worldTickProcessor,
             worldEvents,
-            clients.RefreshWorldIndex);
+            clients.RefreshWorldIndex,
+            monsters);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

@@ -22,6 +22,8 @@ await RunWorldEventQueueTestAsync();
 RunWorldRulesTest();
 RunWorldGridTest();
 await RunWorldGridIndexTestAsync();
+MonsterTests.RunMonsterRegistryTest();
+await MonsterTests.RunMonsterCommandsTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -2389,6 +2391,67 @@ sealed record SentMessage(ClientConnection Connection, MessageType Type, string 
 
 sealed record BroadcastMessage(ClientConnection Connection, string Text);
 
+static class MonsterTests
+{
+public static void RunMonsterRegistryTest()
+{
+    var registry = new MonsterRegistry();
+    var first = new MonsterEntity(1, "slime", 1, new WorldPosition(3, 4));
+    var otherMap = new MonsterEntity(2, "goblin", 2, new WorldPosition(5, 6));
+
+    if (!registry.TrySpawn(first) || !registry.TrySpawn(otherMap) || registry.Count != 2)
+    {
+        throw new InvalidOperationException("MonsterRegistry should store newly spawned monsters.");
+    }
+
+    if (registry.TrySpawn(first))
+    {
+        throw new InvalidOperationException("MonsterRegistry should reject duplicate monster ids.");
+    }
+
+    MonsterEntity[] mapMonsters = registry.SnapshotMap(1);
+    if (mapMonsters.Length != 1 || mapMonsters[0] != first)
+    {
+        throw new InvalidOperationException("MonsterRegistry should return only monsters in the requested map.");
+    }
+}
+
+public static async Task RunMonsterCommandsTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(1);
+    context.Connection.Session.Spawn();
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/spawn-monster 10 slime 3 4"));
+
+    if (context.SentMessages.Last().Text != "Spawned monster slime#10 at map=1, x=3, y=4" ||
+        context.Monsters.Count != 1)
+    {
+        throw new InvalidOperationException("/spawn-monster should create a monster in the player's current map.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/monsters"));
+
+    if (!context.SentMessages.Last().Text.Contains("slime#10@x=3, y=4", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("/monsters should list monsters in the player's current map.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/spawn-monster 10 slime 5 6"));
+
+    if (context.SentMessages.Last().Text != "Monster id is already in use: 10" || context.Monsters.Count != 1)
+    {
+        throw new InvalidOperationException("/spawn-monster should reject duplicate monster ids.");
+    }
+}
+}
+
 sealed class CommandHandlerTestContext : IAsyncDisposable
 {
     private readonly NetworkPair pair;
@@ -2408,6 +2471,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     public List<string> NearbyNotices { get; } = new();
 
     public List<string> MovedRooms { get; } = new();
+
+    public MonsterRegistry Monsters { get; } = new();
 
     public string? DuplicateName { get; set; }
 
@@ -2440,7 +2505,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor),
             worldTickProcessor,
             new WorldEventQueue(),
-            _ => { });
+            _ => { },
+            Monsters);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)
