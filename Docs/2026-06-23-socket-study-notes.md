@@ -1536,3 +1536,28 @@ WorldEvent.PlayerMoved("alice", 1, position)
 - 이벤트 타입을 분리하면 나중에 텍스트 notice 대신 바이너리 패킷이나 JSON 패킷으로 바꾸기 쉽습니다.
 - 실제 MMO 서버에서는 `SpawnEntity`, `MoveEntity`, `DespawnEntity` 같은 이벤트가 클라이언트 동기화의 중심이 됩니다.
 - 지금은 작은 record 하나지만, 나중에는 이벤트 큐, 월드 tick, 패킷 직렬화로 연결할 수 있습니다.
+
+### Step 4. 맵별 플레이어 목록 조회
+
+이번 step에서는 `ClientRegistry`가 특정 게임 맵에 스폰되어 있는 플레이어 목록을 조회할 수 있게 했습니다.
+
+추가된 메서드:
+
+```csharp
+public string[] GetSpawnedPlayerNamesInMap(int mapId)
+```
+
+새 명령:
+
+```text
+> /map-users
+< [notice] Players in map 1 (2): alice, bob
+```
+
+공부 포인트:
+
+- 채팅방 목록과 게임 맵 목록은 다릅니다.
+- `/room-users`는 같은 채팅 채널의 접속자 목록입니다.
+- `/map-users`는 같은 게임 맵에 실제로 스폰된 플레이어 목록입니다.
+- 스폰되지 않은 플레이어는 맵 안에 존재하는 월드 엔티티가 아니므로 목록에서 제외합니다.
+- 나중에는 이 구조가 맵별 zone, channel, instance, shard 관리로 확장됩니다.

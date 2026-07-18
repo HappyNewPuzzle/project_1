@@ -25,6 +25,7 @@ sealed class ChatServer
             clients.GetNames,
             clients.GetRoomNames,
             clients.GetNamesInRoom,
+            clients.GetSpawnedPlayerNamesInMap,
             clients.GetNearbyNames,
             clients.GetNearbySnapshots,
             clients.IsNameInUse,

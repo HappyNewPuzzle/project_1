@@ -15,6 +15,7 @@ public sealed class ChatCommandHandler
         "/logout",
         "/pos",
         "/map",
+        "/map-users",
         "/warp <mapId> <x> <y>",
         "/move <sequence> <x> <y>",
         "/nearby",
@@ -93,6 +94,9 @@ public sealed class ChatCommandHandler
     // 현재 클라이언트 주변의 접속자 이름 목록을 가져오는 함수입니다.
     private readonly Func<ClientConnection, string[]> getNearbyNames;
 
+    // 특정 게임 맵에 스폰되어 있는 플레이어 이름 목록을 가져오는 함수입니다.
+    private readonly Func<int, string[]> getSpawnedPlayerNamesInMap;
+
     // 현재 클라이언트 주변의 플레이어 상태 스냅샷을 가져오는 함수입니다.
     private readonly Func<ClientConnection, NearbySnapshotResult> getNearbySnapshots;
 
@@ -120,6 +124,7 @@ public sealed class ChatCommandHandler
         Func<string[]> getClientNames,
         Func<string[]> getRoomNames,
         Func<string, string[]> getClientNamesInRoom,
+        Func<int, string[]> getSpawnedPlayerNamesInMap,
         Func<ClientConnection, string[]> getNearbyNames,
         Func<ClientConnection, NearbySnapshotResult> getNearbySnapshots,
         Func<string, ClientConnection, bool> isNameInUse,
@@ -142,6 +147,8 @@ public sealed class ChatCommandHandler
         this.getRoomNames = getRoomNames;
         // 방별 접속자 이름 조회 함수를 저장합니다.
         this.getClientNamesInRoom = getClientNamesInRoom;
+        // 맵별 스폰 플레이어 이름 조회 함수를 저장합니다.
+        this.getSpawnedPlayerNamesInMap = getSpawnedPlayerNamesInMap;
         // 주변 접속자 이름 조회 함수를 저장합니다.
         this.getNearbyNames = getNearbyNames;
         // 주변 플레이어 상태 스냅샷 조회 함수를 저장합니다.
@@ -342,6 +349,19 @@ public sealed class ChatCommandHandler
         }
 
         // /warp 명령은 스폰된 플레이어를 다른 맵과 위치로 전환합니다.
+        // /map-users 명령은 현재 게임 맵에 스폰된 플레이어 이름 목록을 보여줍니다.
+        if (message.Text.Equals("/map-users", StringComparison.OrdinalIgnoreCase))
+        {
+            // 현재 세션의 맵 ID로 스폰 플레이어 목록을 조회합니다.
+            string[] names = getSpawnedPlayerNamesInMap(connection.Session.MapId);
+            // 목록이 비어 있으면 읽기 쉬운 고정 문구로 표시합니다.
+            string displayNames = names.Length == 0 ? "(none)" : string.Join(", ", names);
+            // 보낸 사람에게만 현재 맵의 스폰 플레이어 목록을 알려줍니다.
+            await sendToClientAsync(connection, MessageType.Notice, $"Players in map {connection.Session.MapId} ({names.Length}): {displayNames}");
+            // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
         if (message.Text.StartsWith("/warp ", StringComparison.OrdinalIgnoreCase))
         {
             // 로그인하지 않은 세션은 게임 맵을 이동할 수 없습니다.

@@ -96,6 +96,23 @@ public sealed class ClientRegistry
     }
 
     // 같은 게임 맵에서 현재 클라이언트 주변에 있는 접속자 이름 목록을 가져옵니다.
+    // 특정 게임 맵에 스폰되어 있는 플레이어 이름 목록을 가져옵니다.
+    public string[] GetSpawnedPlayerNamesInMap(int mapId)
+    {
+        // 접속 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.
+        lock (gate)
+        {
+            // 같은 맵에 실제로 스폰된 플레이어만 이름순으로 반환합니다.
+            return clients
+                .Where(client =>
+                    client.Session.IsSpawned &&
+                    client.Session.MapId == mapId)
+                .Select(client => client.Name)
+                .OrderBy(name => name)
+                .ToArray();
+        }
+    }
+
     public string[] GetNearbyNames(ClientConnection center)
     {
         // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.

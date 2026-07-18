@@ -26,6 +26,7 @@ await RunClientRegistryFindsNamesCaseInsensitiveAsync();
 RunClientRegistryIncludesDefaultRoom();
 await RunClientRegistryFiltersRoomsAsync();
 await RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync();
+await RunClientRegistryFindsSpawnedPlayersByMapAsync();
 await RunClientRegistryFindsNearbyNamesAsync();
 await RunClientRegistryFindsNearbySnapshotsAsync();
 await RunClientRegistryLimitsNearbySnapshotsAsync();
@@ -52,6 +53,7 @@ await RunLogoutWhileSpawnedCommandTestAsync();
 await RunLogoutWhenAnonymousCommandTestAsync();
 await RunPositionCommandTestAsync();
 await RunMapCommandTestAsync();
+await RunMapUsersCommandTestAsync();
 await RunWarpCommandTestAsync();
 await RunWarpRequiresAuthenticationCommandTestAsync();
 await RunWarpWhenNotSpawnedCommandTestAsync();
@@ -698,6 +700,37 @@ static async Task RunClientRegistrySnapshotsRoomsCaseInsensitiveAsync()
     }
 }
 
+static async Task RunClientRegistryFindsSpawnedPlayersByMapAsync()
+{
+    var registry = new ClientRegistry();
+    await using NetworkPair alicePair = await NetworkPair.ConnectAsync();
+    await using NetworkPair bobPair = await NetworkPair.ConnectAsync();
+    await using NetworkPair claraPair = await NetworkPair.ConnectAsync();
+    var alice = new ClientConnection("alice", alicePair.Client, alicePair.ClientStream);
+    var bob = new ClientConnection("bob", bobPair.Client, bobPair.ClientStream);
+    var clara = new ClientConnection("clara", claraPair.Client, claraPair.ClientStream);
+
+    alice.Session.Spawn();
+    bob.Session.Spawn();
+    clara.Session.ChangeMap(2);
+    clara.Session.Spawn();
+    registry.Add(bob);
+    registry.Add(clara);
+    registry.Add(alice);
+
+    if (!registry.GetSpawnedPlayerNamesInMap(WorldRules.DefaultMapId).SequenceEqual(["alice", "bob"]))
+    {
+        throw new InvalidOperationException("ClientRegistry should return spawned players in the requested map.");
+    }
+
+    bob.Session.Despawn();
+
+    if (!registry.GetSpawnedPlayerNamesInMap(WorldRules.DefaultMapId).SequenceEqual(["alice"]))
+    {
+        throw new InvalidOperationException("ClientRegistry should exclude despawned players from map player lists.");
+    }
+}
+
 static async Task RunClientRegistryFindsNearbyNamesAsync()
 {
     var registry = new ClientRegistry();
@@ -1236,6 +1269,20 @@ static async Task RunMapCommandTestAsync()
     if (!handled || context.SentMessages.Single().Text != "Map: 2")
     {
         throw new InvalidOperationException("/map did not return the current game map id.");
+    }
+}
+
+static async Task RunMapUsersCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    bool handled = await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/map-users"));
+
+    if (!handled || context.SentMessages.Single().Text != "Players in map 1 (2): alice, bob")
+    {
+        throw new InvalidOperationException("/map-users did not return the current map player list.");
     }
 }
 
@@ -2207,6 +2254,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             () => ["alice", "bob"],
             () => ["lobby", "study"],
             roomName => roomName == "study" ? ["alice"] : [],
+            _ => ["alice", "bob"],
             GetNearbyNames,
             GetNearbySnapshots,
             IsNameInUse,
