@@ -7,6 +7,8 @@ sealed class ChatServer
     // 접속자 목록 관리를 전담하는 registry입니다.
     private readonly ClientRegistry clients = new();
 
+    private readonly MovementRequestQueue movementRequests = new();
+
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
 
@@ -32,7 +34,8 @@ sealed class ChatServer
             clients.FindByName,
             MoveClientToRoomAsync,
             () => DateTimeOffset.Now,
-            () => serverStartedAt);
+            () => serverStartedAt,
+            movementRequests);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

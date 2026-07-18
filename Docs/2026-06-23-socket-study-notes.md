@@ -1592,3 +1592,23 @@ public static class MovementTickProcessor { ... }
 - 실제 MMO 서버에서는 네트워크 스레드가 요청을 큐에 넣고, 월드 tick이 큐를 꺼내 순서대로 처리하는 구조로 발전합니다.
 
 이번 step은 아직 독립 tick loop는 아니지만, 이동 처리 책임을 별도 처리기로 분리해 다음 구조 변경의 발판을 만든 단계입니다.
+
+### Step 1. 이동 요청 큐
+
+이번 step에서는 네트워크 명령이 만든 이동 요청을 `MovementRequestQueue`에 넣은 뒤 FIFO 순서로 꺼내 처리하도록 변경했습니다.
+
+```text
+/move 수신
+-> QueuedMovementRequest 생성
+-> MovementRequestQueue.Enqueue(...)
+-> MovementRequestQueue.TryDequeue(...)
+-> MovementTickProcessor.Process(...)
+```
+
+`QueuedMovementRequest`는 소켓 연결이 아니라 `PlayerSession`과 `MovementRequest`만 참조합니다. 덕분에 월드 이동 로직이 네트워크 계층에 직접 의존하지 않습니다.
+
+공부 포인트:
+
+- FIFO 큐는 먼저 도착한 입력을 먼저 처리합니다.
+- `lock`으로 enqueue, dequeue, count 연산을 보호해 여러 네트워크 작업이 동시에 접근해도 큐 내부 상태가 깨지지 않게 했습니다.
+- 현재는 기존 명령 응답을 유지하기 위해 요청을 바로 꺼냅니다. 다음 step에서 `WorldTickProcessor`가 여러 요청을 한 번에 꺼내 처리하게 됩니다.

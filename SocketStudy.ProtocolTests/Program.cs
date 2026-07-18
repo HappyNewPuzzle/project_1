@@ -16,6 +16,7 @@ RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
 RunMovementTickProcessorTest();
+RunMovementRequestQueueTest();
 RunWorldRulesTest();
 RunWorldGridTest();
 RunServerPortParseTest();
@@ -459,6 +460,37 @@ static void RunMovementTickProcessorTest()
         session.LastMoveSequence != 1)
     {
         throw new InvalidOperationException("MovementTickProcessor should reject cooldown movement without consuming sequence.");
+    }
+}
+
+static void RunMovementRequestQueueTest()
+{
+    var queue = new MovementRequestQueue();
+    var firstSession = new PlayerSession();
+    var secondSession = new PlayerSession();
+    var first = new QueuedMovementRequest(
+        firstSession,
+        new MovementRequest(1, new WorldPosition(1, 0), DateTimeOffset.UnixEpoch));
+    var second = new QueuedMovementRequest(
+        secondSession,
+        new MovementRequest(2, new WorldPosition(2, 0), DateTimeOffset.UnixEpoch));
+
+    queue.Enqueue(first);
+    queue.Enqueue(second);
+
+    if (queue.Count != 2 || !queue.TryDequeue(out QueuedMovementRequest? dequeuedFirst) || dequeuedFirst != first)
+    {
+        throw new InvalidOperationException("MovementRequestQueue should dequeue the oldest request first.");
+    }
+
+    if (!queue.TryDequeue(out QueuedMovementRequest? dequeuedSecond) || dequeuedSecond != second)
+    {
+        throw new InvalidOperationException("MovementRequestQueue should preserve FIFO order.");
+    }
+
+    if (queue.Count != 0 || queue.TryDequeue(out _))
+    {
+        throw new InvalidOperationException("MovementRequestQueue should report an empty queue after draining.");
     }
 }
 
@@ -2302,7 +2334,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             FindClientByName,
             MoveClientToRoomAsync,
             () => CurrentTime,
-            () => ServerStartedAt);
+            () => ServerStartedAt,
+            new MovementRequestQueue());
     }
 
     public static async Task<CommandHandlerTestContext> CreateAsync(string name)
