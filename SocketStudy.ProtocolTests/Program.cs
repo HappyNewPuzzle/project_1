@@ -17,6 +17,7 @@ await RunPlayerEntityTestAsync();
 RunWorldEventTest();
 RunMovementTickProcessorTest();
 RunMovementRequestQueueTest();
+RunWorldTickProcessorTest();
 RunWorldRulesTest();
 RunWorldGridTest();
 RunServerPortParseTest();
@@ -491,6 +492,43 @@ static void RunMovementRequestQueueTest()
     if (queue.Count != 0 || queue.TryDequeue(out _))
     {
         throw new InvalidOperationException("MovementRequestQueue should report an empty queue after draining.");
+    }
+}
+
+static void RunWorldTickProcessorTest()
+{
+    var queue = new MovementRequestQueue();
+    var processor = new WorldTickProcessor(queue);
+    var firstSession = new PlayerSession();
+    var secondSession = new PlayerSession();
+    DateTimeOffset tickTime = DateTimeOffset.UnixEpoch.AddSeconds(1);
+
+    firstSession.Spawn();
+    secondSession.Spawn();
+    queue.Enqueue(new QueuedMovementRequest(
+        firstSession,
+        new MovementRequest(1, new WorldPosition(1, 0), tickTime)));
+    queue.Enqueue(new QueuedMovementRequest(
+        secondSession,
+        new MovementRequest(1, new WorldPosition(2, 0), tickTime)));
+
+    WorldTickResult result = processor.ProcessOnce();
+
+    if (result.Movements.Count != 2 || queue.Count != 0)
+    {
+        throw new InvalidOperationException("WorldTickProcessor should drain all queued movement requests in one tick.");
+    }
+
+    if (!result.Movements.All(movement => movement.Result.IsAccepted) ||
+        firstSession.Position != new WorldPosition(1, 0) ||
+        secondSession.Position != new WorldPosition(2, 0))
+    {
+        throw new InvalidOperationException("WorldTickProcessor should apply each accepted movement request.");
+    }
+
+    if (processor.ProcessOnce().Movements.Count != 0)
+    {
+        throw new InvalidOperationException("WorldTickProcessor should return an empty result when no input is queued.");
     }
 }
 
@@ -2335,7 +2373,15 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             MoveClientToRoomAsync,
             () => CurrentTime,
             () => ServerStartedAt,
-            new MovementRequestQueue());
+            CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor),
+            worldTickProcessor);
+    }
+
+    private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)
+    {
+        var movementRequests = new MovementRequestQueue();
+        worldTickProcessor = new WorldTickProcessor(movementRequests);
+        return movementRequests;
     }
 
     public static async Task<CommandHandlerTestContext> CreateAsync(string name)

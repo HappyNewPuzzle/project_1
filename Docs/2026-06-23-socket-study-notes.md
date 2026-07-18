@@ -1612,3 +1612,25 @@ public static class MovementTickProcessor { ... }
 - FIFO 큐는 먼저 도착한 입력을 먼저 처리합니다.
 - `lock`으로 enqueue, dequeue, count 연산을 보호해 여러 네트워크 작업이 동시에 접근해도 큐 내부 상태가 깨지지 않게 했습니다.
 - 현재는 기존 명령 응답을 유지하기 위해 요청을 바로 꺼냅니다. 다음 step에서 `WorldTickProcessor`가 여러 요청을 한 번에 꺼내 처리하게 됩니다.
+
+### Step 2. 월드 틱 처리기
+
+이번 step에서는 `WorldTickProcessor.ProcessOnce()`가 이동 요청 큐를 비우면서 한 tick의 입력을 일괄 처리하도록 변경했습니다.
+
+```text
+네트워크 명령들 -> MovementRequestQueue
+                         |
+                         v
+                  WorldTickProcessor.ProcessOnce()
+                         |
+                         v
+                 WorldTickResult 반환
+```
+
+각 결과는 `ProcessedMovement`에 원본 요청과 성공 또는 거절 결과를 함께 보관합니다. 따라서 명령 처리기는 월드 상태를 직접 변경하지 않고 해당 플레이어의 처리 결과만 찾아 응답할 수 있습니다.
+
+공부 포인트:
+
+- tick은 서버가 정한 시점에 게임 상태를 갱신하는 논리적 단위입니다.
+- 한 tick에서 입력을 모아 처리하면 입력 도착과 게임 시뮬레이션의 실행 시점을 분리할 수 있습니다.
+- 현재는 학습과 기존 테스트 호환을 위해 `/move`가 즉시 한 tick을 실행합니다. 이후에는 고정 주기 loop가 같은 `ProcessOnce()`를 호출하도록 발전시킬 수 있습니다.

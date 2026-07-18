@@ -117,6 +117,8 @@ public sealed class ChatCommandHandler
 
     private readonly MovementRequestQueue movementRequests;
 
+    private readonly WorldTickProcessor worldTickProcessor;
+
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
@@ -134,7 +136,8 @@ public sealed class ChatCommandHandler
         Func<ClientConnection, string, Task> moveClientToRoomAsync,
         Func<DateTimeOffset> getCurrentTime,
         Func<DateTimeOffset> getServerStartedAt,
-        MovementRequestQueue movementRequests)
+        MovementRequestQueue movementRequests,
+        WorldTickProcessor worldTickProcessor)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -167,6 +170,7 @@ public sealed class ChatCommandHandler
         // 서버 시작 시각 조회 함수를 저장합니다.
         this.getServerStartedAt = getServerStartedAt;
         this.movementRequests = movementRequests;
+        this.worldTickProcessor = worldTickProcessor;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -518,15 +522,17 @@ public sealed class ChatCommandHandler
                 connection.Session,
                 new MovementRequest(sequence, nextPosition, currentTime)));
 
-            if (!movementRequests.TryDequeue(out QueuedMovementRequest? queuedRequest) || queuedRequest is null)
+            WorldTickResult tickResult = worldTickProcessor.ProcessOnce();
+            ProcessedMovement? processedMovement = tickResult.Movements.LastOrDefault(
+                movement => ReferenceEquals(movement.QueuedRequest.Session, connection.Session));
+
+            if (processedMovement is null)
             {
-                await sendToClientAsync(connection, MessageType.Notice, "Move queue is temporarily unavailable.");
+                await sendToClientAsync(connection, MessageType.Notice, "Move was not processed by the world tick.");
                 return true;
             }
 
-            MovementTickResult movementResult = MovementTickProcessor.Process(
-                queuedRequest.Session,
-                queuedRequest.Request);
+            MovementTickResult movementResult = processedMovement.Result;
 
             if (!movementResult.IsAccepted)
             {

@@ -9,6 +9,8 @@ sealed class ChatServer
 
     private readonly MovementRequestQueue movementRequests = new();
 
+    private readonly WorldTickProcessor worldTickProcessor;
+
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
 
@@ -17,6 +19,7 @@ sealed class ChatServer
     {
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
+        worldTickProcessor = new WorldTickProcessor(movementRequests);
 
         // command handler가 필요한 서버 기능을 함수 형태로 전달합니다.
         commandHandler = new ChatCommandHandler(
@@ -35,7 +38,8 @@ sealed class ChatServer
             MoveClientToRoomAsync,
             () => DateTimeOffset.Now,
             () => serverStartedAt,
-            movementRequests);
+            movementRequests,
+            worldTickProcessor);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
