@@ -15,6 +15,7 @@ RunServerInfoTest();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
+RunMovementTickProcessorTest();
 RunWorldRulesTest();
 RunWorldGridTest();
 RunServerPortParseTest();
@@ -418,6 +419,46 @@ static void RunWorldEventTest()
     if (WorldEvent.PlayerEnteredMap("alice", 2, position).ToNoticeMessage() != "alice entered map 2 at x=10, y=20")
     {
         throw new InvalidOperationException("WorldEvent should format player map enter notices.");
+    }
+}
+
+static void RunMovementTickProcessorTest()
+{
+    var session = new PlayerSession();
+    DateTimeOffset firstTick = DateTimeOffset.UnixEpoch;
+
+    MovementTickResult accepted = MovementTickProcessor.Process(
+        session,
+        new MovementRequest(1, new WorldPosition(4, 6), firstTick));
+
+    if (!accepted.IsAccepted ||
+        session.Position != new WorldPosition(4, 6) ||
+        session.LastMoveAt != firstTick ||
+        session.LastMoveSequence != 1)
+    {
+        throw new InvalidOperationException("MovementTickProcessor should apply accepted movement requests.");
+    }
+
+    MovementTickResult repeated = MovementTickProcessor.Process(
+        session,
+        new MovementRequest(1, new WorldPosition(5, 6), firstTick.AddSeconds(1)));
+
+    if (repeated.IsAccepted ||
+        repeated.RejectionReason != "Move sequence must be greater than 1." ||
+        session.Position != new WorldPosition(4, 6))
+    {
+        throw new InvalidOperationException("MovementTickProcessor should reject repeated movement sequences without changing state.");
+    }
+
+    MovementTickResult cooldown = MovementTickProcessor.Process(
+        session,
+        new MovementRequest(2, new WorldPosition(5, 6), firstTick.AddMilliseconds(500)));
+
+    if (cooldown.IsAccepted ||
+        cooldown.RejectionReason != "You must wait 1 second between moves." ||
+        session.LastMoveSequence != 1)
+    {
+        throw new InvalidOperationException("MovementTickProcessor should reject cooldown movement without consuming sequence.");
     }
 }
 

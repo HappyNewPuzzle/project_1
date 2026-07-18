@@ -1561,3 +1561,34 @@ public string[] GetSpawnedPlayerNamesInMap(int mapId)
 - `/map-users`는 같은 게임 맵에 실제로 스폰된 플레이어 목록입니다.
 - 스폰되지 않은 플레이어는 맵 안에 존재하는 월드 엔티티가 아니므로 목록에서 제외합니다.
 - 나중에는 이 구조가 맵별 zone, channel, instance, shard 관리로 확장됩니다.
+
+### Step 5. 이동 상태 서버 tick 처리기 분리
+
+이번 step에서는 `/move` 명령이 세션 상태를 직접 바꾸는 대신 `MovementTickProcessor`를 통해 최종 이동 적용을 하도록 변경했습니다.
+
+추가된 구조:
+
+```csharp
+public sealed record MovementRequest(long Sequence, WorldPosition TargetPosition, DateTimeOffset ServerTime);
+public sealed record MovementTickResult(bool IsAccepted, string? RejectionReason);
+public static class MovementTickProcessor { ... }
+```
+
+현재 흐름:
+
+```text
+/move 1 4 6
+-> MovementRequest 생성
+-> MovementTickProcessor.Process(session, request)
+-> 검증 통과 시 session.MoveTo(...)
+-> 주변 플레이어에게 WorldEvent.PlayerMoved 알림
+```
+
+공부 포인트:
+
+- 입력 파싱과 이동 상태 적용을 분리하면 나중에 서버 tick loop로 옮기기 쉬워집니다.
+- 서버 tick 처리기는 sequence, 월드 경계, 이동 거리, 쿨다운을 한곳에서 검증합니다.
+- 실패한 이동은 위치, 마지막 이동 시각, sequence를 변경하지 않습니다.
+- 실제 MMO 서버에서는 네트워크 스레드가 요청을 큐에 넣고, 월드 tick이 큐를 꺼내 순서대로 처리하는 구조로 발전합니다.
+
+이번 step은 아직 독립 tick loop는 아니지만, 이동 처리 책임을 별도 처리기로 분리해 다음 구조 변경의 발판을 만든 단계입니다.

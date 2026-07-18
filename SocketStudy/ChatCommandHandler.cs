@@ -510,7 +510,15 @@ public sealed class ChatCommandHandler
             }
 
             // 세션 위치와 마지막 승인 이동 시각 및 순서 번호를 함께 변경합니다.
-            connection.Session.MoveTo(nextPosition, currentTime, sequence);
+            MovementTickResult movementResult = MovementTickProcessor.Process(
+                connection.Session,
+                new MovementRequest(sequence, nextPosition, currentTime));
+
+            if (!movementResult.IsAccepted)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, movementResult.RejectionReason ?? "Move rejected.");
+                return true;
+            }
             // 주변 플레이어에게 이동을 알립니다.
             await broadcastNearbyNoticeAsync(
                 connection,
