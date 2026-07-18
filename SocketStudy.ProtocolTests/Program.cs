@@ -13,6 +13,7 @@ RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
 RunPlayerSessionTest();
+await RunPlayerEntityTestAsync();
 RunWorldRulesTest();
 RunWorldGridTest();
 RunServerPortParseTest();
@@ -361,6 +362,29 @@ static void RunPlayerSessionTest()
         session.Position != WorldPosition.Origin || session.MapId != WorldRules.DefaultMapId)
     {
         throw new InvalidOperationException("Player sessions should reset authentication, position, and map on logout.");
+    }
+}
+
+static async Task RunPlayerEntityTestAsync()
+{
+    await using NetworkPair pair = await NetworkPair.ConnectAsync();
+    var connection = new ClientConnection("alice", pair.Client, pair.ClientStream);
+
+    connection.Session.Authenticate(1001);
+    connection.Session.MoveTo(new WorldPosition(10, 20));
+    connection.Session.ChangeMap(2);
+    connection.Session.Spawn();
+
+    PlayerEntity entity = PlayerEntity.FromConnection(connection);
+
+    if (entity.EntityId != 1001 ||
+        entity.PlayerId != 1001 ||
+        entity.Name != "alice" ||
+        entity.MapId != 2 ||
+        entity.Position != new WorldPosition(10, 20) ||
+        !entity.IsSpawned)
+    {
+        throw new InvalidOperationException("PlayerEntity should copy the expected world-facing player state.");
     }
 }
 

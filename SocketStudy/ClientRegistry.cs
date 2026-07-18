@@ -118,12 +118,18 @@ public sealed class ClientRegistry
         {
             // 이름뿐 아니라 플레이어 ID, 맵, 위치까지 복사해서 클라이언트에 보낼 수 있는 형태로 만듭니다.
             NearbyPlayerSnapshot[] allSnapshots = GetNearbyCandidates(center)
-                .Select(client => new NearbyPlayerSnapshot(
-                    client.Name,
-                    client.Session.PlayerId,
-                    client.Session.MapId,
-                    client.Session.Position,
-                    WorldRules.GetDistance(center.Session.Position, client.Session.Position)))
+                .Select(client =>
+                {
+                    // 연결/세션 상태를 월드 엔티티 읽기 모델로 변환합니다.
+                    PlayerEntity entity = PlayerEntity.FromConnection(client);
+                    // 클라이언트에 보낼 AOI 스냅샷은 월드 엔티티 상태를 기반으로 만듭니다.
+                    return new NearbyPlayerSnapshot(
+                        entity.Name,
+                        entity.PlayerId,
+                        entity.MapId,
+                        entity.Position,
+                        WorldRules.GetDistance(center.Session.Position, entity.Position));
+                })
                 .OrderBy(snapshot => snapshot.Distance)
                 .ThenBy(snapshot => snapshot.Name)
                 .ToArray();

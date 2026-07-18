@@ -1475,3 +1475,31 @@ player position
 - grid는 먼저 후보를 줄이고, 그 다음 정확한 거리 검사를 하는 방식입니다.
 - 지금 구현은 단순하게 매 조회 시 후보 셀을 계산하지만, 다음 단계에서는 맵별/셀별 목록을 계속 유지하는 구조로 발전시킬 수 있습니다.
 - 실제 MMO 서버의 AOI, interest management, visibility culling이 이런 방향으로 발전합니다.
+
+### Step 2. 월드 엔티티 모델 분리
+
+이번 step에서는 네트워크 연결 객체인 `ClientConnection`에서 바로 월드 상태를 꺼내 쓰지 않고, `WorldEntity`와 `PlayerEntity` 읽기 모델을 추가했습니다.
+
+추가된 구조:
+
+```csharp
+public abstract record WorldEntity(long EntityId, int MapId, WorldPosition Position, bool IsSpawned);
+
+public sealed record PlayerEntity(
+    long PlayerId,
+    string Name,
+    int MapId,
+    WorldPosition Position,
+    bool IsSpawned) : WorldEntity(PlayerId, MapId, Position, IsSpawned);
+```
+
+현재는 `PlayerEntity.FromConnection(connection)`으로 접속 객체와 세션 상태를 월드 엔티티 읽기 모델로 변환합니다.
+
+공부 포인트:
+
+- `ClientConnection`은 TCP 연결, 닉네임, 송신 lock 같은 네트워크 책임을 가집니다.
+- `PlayerSession`은 로그인, 위치, 스폰 상태 같은 플레이어 세션 상태를 가집니다.
+- `PlayerEntity`는 클라이언트 화면에 복제할 월드 상태를 읽는 모델입니다.
+- 나중에 `MonsterEntity`, `NpcEntity`, `ItemEntity`를 추가해도 AOI 스냅샷 구조를 확장하기 쉬워집니다.
+
+이번 step은 아직 큰 구조 변경은 아니지만, “네트워크 연결”과 “월드에 존재하는 엔티티”를 머릿속에서 분리하기 위한 기초 작업입니다.
