@@ -14,6 +14,7 @@ RunNameRulesTest();
 RunServerInfoTest();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
+RunWorldEventTest();
 RunWorldRulesTest();
 RunWorldGridTest();
 RunServerPortParseTest();
@@ -385,6 +386,36 @@ static async Task RunPlayerEntityTestAsync()
         !entity.IsSpawned)
     {
         throw new InvalidOperationException("PlayerEntity should copy the expected world-facing player state.");
+    }
+}
+
+static void RunWorldEventTest()
+{
+    var position = new WorldPosition(10, 20);
+
+    if (WorldEvent.PlayerSpawned("alice", 1, position).ToNoticeMessage() != "alice spawned at x=10, y=20")
+    {
+        throw new InvalidOperationException("WorldEvent should format player spawn notices.");
+    }
+
+    if (WorldEvent.PlayerMoved("alice", 1, position).ToNoticeMessage() != "alice moved to x=10, y=20")
+    {
+        throw new InvalidOperationException("WorldEvent should format player move notices.");
+    }
+
+    if (WorldEvent.PlayerDespawned("alice", 1, position).ToNoticeMessage() != "alice despawned from x=10, y=20")
+    {
+        throw new InvalidOperationException("WorldEvent should format player despawn notices.");
+    }
+
+    if (WorldEvent.PlayerLeftMap("alice", 2, position).ToNoticeMessage() != "alice left map 2 from x=10, y=20")
+    {
+        throw new InvalidOperationException("WorldEvent should format player map leave notices.");
+    }
+
+    if (WorldEvent.PlayerEnteredMap("alice", 2, position).ToNoticeMessage() != "alice entered map 2 at x=10, y=20")
+    {
+        throw new InvalidOperationException("WorldEvent should format player map enter notices.");
     }
 }
 

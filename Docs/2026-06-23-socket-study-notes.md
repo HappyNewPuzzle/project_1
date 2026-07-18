@@ -1503,3 +1503,36 @@ public sealed record PlayerEntity(
 - 나중에 `MonsterEntity`, `NpcEntity`, `ItemEntity`를 추가해도 AOI 스냅샷 구조를 확장하기 쉬워집니다.
 
 이번 step은 아직 큰 구조 변경은 아니지만, “네트워크 연결”과 “월드에 존재하는 엔티티”를 머릿속에서 분리하기 위한 기초 작업입니다.
+
+### Step 3. 스폰/디스폰 전용 월드 이벤트 모델
+
+이번 step에서는 주변 플레이어에게 보내는 spawn, move, despawn, map enter/leave 알림을 바로 문자열로 만들지 않고 `WorldEvent` 모델을 거치도록 변경했습니다.
+
+추가된 구조:
+
+```csharp
+public enum WorldEventType
+{
+    PlayerSpawned,
+    PlayerMoved,
+    PlayerDespawned,
+    PlayerLeftMap,
+    PlayerEnteredMap
+}
+
+public sealed record WorldEvent(WorldEventType Type, string ActorName, int MapId, WorldPosition Position);
+```
+
+현재는 `WorldEvent.ToNoticeMessage()`로 기존 notice 문자열을 만듭니다.
+
+```text
+WorldEvent.PlayerMoved("alice", 1, position)
+-> alice moved to x=10, y=20
+```
+
+공부 포인트:
+
+- 문자열은 클라이언트에 보여주는 표현이고, 이벤트는 서버 내부의 의미입니다.
+- 이벤트 타입을 분리하면 나중에 텍스트 notice 대신 바이너리 패킷이나 JSON 패킷으로 바꾸기 쉽습니다.
+- 실제 MMO 서버에서는 `SpawnEntity`, `MoveEntity`, `DespawnEntity` 같은 이벤트가 클라이언트 동기화의 중심이 됩니다.
+- 지금은 작은 record 하나지만, 나중에는 이벤트 큐, 월드 tick, 패킷 직렬화로 연결할 수 있습니다.

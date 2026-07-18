@@ -396,7 +396,9 @@ public sealed class ChatCommandHandler
             }
 
             // 기존 맵의 주변 플레이어에게 퇴장을 먼저 알립니다.
-            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} left map {connection.Session.MapId} from {connection.Session.Position}");
+            await broadcastNearbyNoticeAsync(
+                connection,
+                WorldEvent.PlayerLeftMap(connection.Name, connection.Session.MapId, connection.Session.Position).ToNoticeMessage());
             // 기존 맵 AOI에서 플레이어를 제거합니다.
             connection.Session.Despawn();
             // despawn 상태에서 목적지 맵으로 변경합니다.
@@ -406,7 +408,9 @@ public sealed class ChatCommandHandler
             // 새 맵 AOI에 플레이어를 추가합니다.
             connection.Session.Spawn();
             // 새 맵의 주변 플레이어에게 입장을 알립니다.
-            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} entered map {connection.Session.MapId} at {connection.Session.Position}");
+            await broadcastNearbyNoticeAsync(
+                connection,
+                WorldEvent.PlayerEnteredMap(connection.Name, connection.Session.MapId, connection.Session.Position).ToNoticeMessage());
             // 보낸 사람에게만 맵 전환 결과를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Warped to map={connection.Session.MapId}, {connection.Session.Position}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -488,7 +492,9 @@ public sealed class ChatCommandHandler
             // 세션 위치와 마지막 승인 이동 시각 및 순서 번호를 함께 변경합니다.
             connection.Session.MoveTo(nextPosition, currentTime, sequence);
             // 주변 플레이어에게 이동을 알립니다.
-            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} moved to {connection.Session.Position}");
+            await broadcastNearbyNoticeAsync(
+                connection,
+                WorldEvent.PlayerMoved(connection.Name, connection.Session.MapId, connection.Session.Position).ToNoticeMessage());
             // 보낸 사람에게만 새 위치를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Moved to {connection.Session.Position}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -573,7 +579,9 @@ public sealed class ChatCommandHandler
             // 현재 세션을 스폰 상태로 변경합니다.
             connection.Session.Spawn();
             // 주변 플레이어에게 스폰 알림을 보냅니다.
-            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} spawned at {connection.Session.Position}");
+            await broadcastNearbyNoticeAsync(
+                connection,
+                WorldEvent.PlayerSpawned(connection.Name, connection.Session.MapId, connection.Session.Position).ToNoticeMessage());
             // 보낸 사람에게만 현재 스폰 위치를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Spawned at {connection.Session.Position}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -597,7 +605,9 @@ public sealed class ChatCommandHandler
             // 현재 세션을 despawn 상태로 변경합니다.
             connection.Session.Despawn();
             // 주변 플레이어에게 despawn 알림을 보냅니다.
-            await broadcastNearbyNoticeAsync(connection, $"{connection.Name} despawned from {despawnPosition}");
+            await broadcastNearbyNoticeAsync(
+                connection,
+                WorldEvent.PlayerDespawned(connection.Name, connection.Session.MapId, despawnPosition).ToNoticeMessage());
             // 보낸 사람에게만 despawn 완료 위치를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Despawned from {despawnPosition}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
