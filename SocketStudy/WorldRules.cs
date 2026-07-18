@@ -13,6 +13,9 @@ public static class WorldRules
     // 주변 플레이어로 판단할 학습용 시야 거리입니다.
     public const int ViewDistance = 25;
 
+    // AOI 후보를 줄이기 위해 월드를 나누는 격자 셀 한 변의 크기입니다.
+    public const int GridCellSize = ViewDistance;
+
     // 한 번의 이동 명령으로 허용할 최대 맨해튼 거리입니다.
     // 한 번의 주변 상태 스냅샷 응답에 담을 최대 플레이어 수입니다.
     public const int MaxNearbySnapshotCount = 10;

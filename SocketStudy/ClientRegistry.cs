@@ -102,12 +102,7 @@ public sealed class ClientRegistry
         lock (gate)
         {
             // 스폰 상태이며 같은 맵과 시야 거리 안에 있는 다른 클라이언트 이름만 정렬해서 반환합니다.
-            return clients
-                .Where(client =>
-                    client != center &&
-                    client.Session.IsSpawned &&
-                    client.Session.MapId == center.Session.MapId &&
-                    WorldRules.IsNearby(client.Session.Position, center.Session.Position))
+            return GetNearbyCandidates(center)
                 .Select(client => client.Name)
                 .OrderBy(name => name)
                 .ToArray();
@@ -122,12 +117,7 @@ public sealed class ClientRegistry
         lock (gate)
         {
             // 이름뿐 아니라 플레이어 ID, 맵, 위치까지 복사해서 클라이언트에 보낼 수 있는 형태로 만듭니다.
-            NearbyPlayerSnapshot[] allSnapshots = clients
-                .Where(client =>
-                    client != center &&
-                    client.Session.IsSpawned &&
-                    client.Session.MapId == center.Session.MapId &&
-                    WorldRules.IsNearby(client.Session.Position, center.Session.Position))
+            NearbyPlayerSnapshot[] allSnapshots = GetNearbyCandidates(center)
                 .Select(client => new NearbyPlayerSnapshot(
                     client.Name,
                     client.Session.PlayerId,
@@ -152,17 +142,29 @@ public sealed class ClientRegistry
         lock (gate)
         {
             // 스폰 상태이며 같은 맵과 시야 거리 안에 있는 다른 클라이언트만 복사합니다.
-            return clients
-                .Where(client =>
-                    client != center &&
-                    client.Session.IsSpawned &&
-                    client.Session.MapId == center.Session.MapId &&
-                    WorldRules.IsNearby(client.Session.Position, center.Session.Position))
-                .ToArray();
+            return GetNearbyCandidates(center);
         }
     }
 
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인합니다.
+    // 현재 플레이어 주변 AOI 후보 셀에서 실제 시야 거리 안의 클라이언트만 고릅니다.
+    private ClientConnection[] GetNearbyCandidates(ClientConnection center)
+    {
+        // 중심 플레이어가 속한 AOI 셀을 계산합니다.
+        WorldGridCell centerCell = WorldGrid.GetCell(center.Session.MapId, center.Session.Position);
+        // 중심 셀과 주변 8개 셀만 후보로 삼습니다.
+        var candidateCells = new HashSet<WorldGridCell>(WorldGrid.GetNeighborCells(centerCell));
+
+        // 후보 셀 안에 있으면서 실제 거리 조건까지 통과한 플레이어만 반환합니다.
+        return clients
+            .Where(client =>
+                client != center &&
+                client.Session.IsSpawned &&
+                candidateCells.Contains(WorldGrid.GetCell(client.Session.MapId, client.Session.Position)) &&
+                WorldRules.IsNearby(client.Session.Position, center.Session.Position))
+            .ToArray();
+    }
+
     public bool IsNameInUse(string name, ClientConnection except)
     {
         // 접속자 목록을 읽는 동안 다른 작업이 목록을 바꾸지 못하도록 lock으로 보호합니다.

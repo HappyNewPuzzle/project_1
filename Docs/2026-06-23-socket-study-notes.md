@@ -1446,3 +1446,32 @@ public readonly record struct NearbyPlayerSnapshot(
 - `/look`의 `(보이는 수/전체 수, hidden=생략 수)` 표기는 제한 때문에 몇 명이 응답에서 빠졌는지 알려줍니다.
 
 이번 step은 “주변에 누가 있는가?”에서 “주변 엔티티가 어떤 상태인가?”로 넘어가는 작은 다리입니다. MMO RPG 서버에서는 이 스냅샷이 캐릭터, 몬스터, NPC, 아이템 상태 복제의 출발점이 됩니다.
+
+### Step 1. AOI Grid 후보 탐색
+
+이번 step에서는 `/nearby`, `/look`, 주변 notice가 모든 접속자를 그대로 훑기 전에 AOI grid 후보 셀을 먼저 보도록 바꿨습니다.
+
+추가된 타입:
+
+```csharp
+public readonly record struct WorldGridCell(int MapId, int X, int Y);
+```
+
+`WorldGrid.GetCell(mapId, position)`은 월드 좌표를 셀 좌표로 바꿉니다. `WorldGrid.GetNeighborCells(center)`는 중심 셀과 주변 8개 셀, 총 3x3 셀을 반환합니다.
+
+현재 흐름:
+
+```text
+player position
+-> WorldGridCell 계산
+-> 주변 3x3 셀만 후보로 선택
+-> 후보 안에서 실제 ViewDistance 검사
+-> /nearby, /look, nearby notice 대상 결정
+```
+
+공부 포인트:
+
+- 모든 플레이어를 매번 검사하면 접속자가 많아질수록 비용이 커집니다.
+- grid는 먼저 후보를 줄이고, 그 다음 정확한 거리 검사를 하는 방식입니다.
+- 지금 구현은 단순하게 매 조회 시 후보 셀을 계산하지만, 다음 단계에서는 맵별/셀별 목록을 계속 유지하는 구조로 발전시킬 수 있습니다.
+- 실제 MMO 서버의 AOI, interest management, visibility culling이 이런 방향으로 발전합니다.

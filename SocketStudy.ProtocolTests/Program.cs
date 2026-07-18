@@ -14,6 +14,7 @@ RunNameRulesTest();
 RunServerInfoTest();
 RunPlayerSessionTest();
 RunWorldRulesTest();
+RunWorldGridTest();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -419,6 +420,39 @@ static void RunWorldRulesTest()
     if (!WorldRules.IsMoveCooldownElapsed(movedAt, movedAt.AddSeconds(1)))
     {
         throw new InvalidOperationException("WorldRules should allow movement when the cooldown elapses.");
+    }
+}
+
+static void RunWorldGridTest()
+{
+    WorldGridCell originCell = WorldGrid.GetCell(WorldRules.DefaultMapId, WorldPosition.Origin);
+
+    if (originCell != new WorldGridCell(WorldRules.DefaultMapId, 0, 0))
+    {
+        throw new InvalidOperationException("WorldGrid should place the origin in the first cell.");
+    }
+
+    if (WorldGrid.GetCell(WorldRules.DefaultMapId, new WorldPosition(WorldRules.GridCellSize, 0)) !=
+        new WorldGridCell(WorldRules.DefaultMapId, 1, 0))
+    {
+        throw new InvalidOperationException("WorldGrid should move to the next cell at the cell boundary.");
+    }
+
+    if (WorldGrid.GetCell(WorldRules.DefaultMapId, new WorldPosition(-1, -1)) !=
+        new WorldGridCell(WorldRules.DefaultMapId, -1, -1))
+    {
+        throw new InvalidOperationException("WorldGrid should floor negative coordinates into negative cells.");
+    }
+
+    WorldGridCell[] neighborCells = WorldGrid.GetNeighborCells(originCell);
+
+    if (neighborCells.Length != 9 ||
+        !neighborCells.Contains(originCell) ||
+        !neighborCells.Contains(new WorldGridCell(WorldRules.DefaultMapId, -1, -1)) ||
+        !neighborCells.Contains(new WorldGridCell(WorldRules.DefaultMapId, 1, 1)) ||
+        neighborCells.Contains(new WorldGridCell(2, 0, 0)))
+    {
+        throw new InvalidOperationException("WorldGrid should return the 3x3 neighbor cells on the same map.");
     }
 }
 
