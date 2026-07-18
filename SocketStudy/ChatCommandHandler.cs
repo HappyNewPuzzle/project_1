@@ -121,6 +121,8 @@ public sealed class ChatCommandHandler
 
     private readonly WorldEventQueue worldEvents;
 
+    private readonly Action<ClientConnection> refreshWorldIndex;
+
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
         Func<ClientConnection, MessageType, string, Task> sendToClientAsync,
@@ -140,7 +142,8 @@ public sealed class ChatCommandHandler
         Func<DateTimeOffset> getServerStartedAt,
         MovementRequestQueue movementRequests,
         WorldTickProcessor worldTickProcessor,
-        WorldEventQueue worldEvents)
+        WorldEventQueue worldEvents,
+        Action<ClientConnection> refreshWorldIndex)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -175,6 +178,7 @@ public sealed class ChatCommandHandler
         this.movementRequests = movementRequests;
         this.worldTickProcessor = worldTickProcessor;
         this.worldEvents = worldEvents;
+        this.refreshWorldIndex = refreshWorldIndex;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -433,12 +437,14 @@ public sealed class ChatCommandHandler
                 WorldEvent.PlayerLeftMap(connection.Name, connection.Session.MapId, connection.Session.Position));
             // 기존 맵 AOI에서 플레이어를 제거합니다.
             connection.Session.Despawn();
+            refreshWorldIndex(connection);
             // despawn 상태에서 목적지 맵으로 변경합니다.
             connection.Session.ChangeMap(mapId);
             // 목적지 좌표로 위치를 변경합니다.
             connection.Session.MoveTo(nextPosition);
             // 새 맵 AOI에 플레이어를 추가합니다.
             connection.Session.Spawn();
+            refreshWorldIndex(connection);
             // 새 맵의 주변 플레이어에게 입장을 알립니다.
             await DispatchWorldEventAsync(
                 connection,
@@ -543,6 +549,7 @@ public sealed class ChatCommandHandler
                 await sendToClientAsync(connection, MessageType.Notice, movementResult.RejectionReason ?? "Move rejected.");
                 return true;
             }
+            refreshWorldIndex(connection);
             // 주변 플레이어에게 이동을 알립니다.
             await DispatchWorldEventAsync(
                 connection,
@@ -630,6 +637,7 @@ public sealed class ChatCommandHandler
 
             // 현재 세션을 스폰 상태로 변경합니다.
             connection.Session.Spawn();
+            refreshWorldIndex(connection);
             // 주변 플레이어에게 스폰 알림을 보냅니다.
             await DispatchWorldEventAsync(
                 connection,
@@ -656,6 +664,7 @@ public sealed class ChatCommandHandler
             WorldPosition despawnPosition = connection.Session.Position;
             // 현재 세션을 despawn 상태로 변경합니다.
             connection.Session.Despawn();
+            refreshWorldIndex(connection);
             // 주변 플레이어에게 despawn 알림을 보냅니다.
             await DispatchWorldEventAsync(
                 connection,

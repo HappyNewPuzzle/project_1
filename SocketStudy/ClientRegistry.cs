@@ -10,6 +10,8 @@ public sealed class ClientRegistry
     // 현재 서버에 접속해 있는 클라이언트 목록입니다.
     private readonly List<ClientConnection> clients = new();
 
+    private readonly WorldGridIndex worldGridIndex = new();
+
     // 현재 클라이언트를 접속자 목록에 추가합니다.
     public int Add(ClientConnection connection)
     {
@@ -18,6 +20,7 @@ public sealed class ClientRegistry
         {
             // 접속자 목록에 새 연결을 추가합니다.
             clients.Add(connection);
+            worldGridIndex.Refresh(connection);
             // 추가 후 접속자 수를 반환합니다.
             return clients.Count;
         }
@@ -31,6 +34,7 @@ public sealed class ClientRegistry
         {
             // 접속자 목록에서 연결을 제거합니다.
             clients.Remove(connection);
+            worldGridIndex.Remove(connection);
             // 제거 후 접속자 수를 반환합니다.
             return clients.Count;
         }
@@ -169,21 +173,29 @@ public sealed class ClientRegistry
         }
     }
 
+    public void RefreshWorldIndex(ClientConnection connection)
+    {
+        lock (gate)
+        {
+            if (clients.Contains(connection))
+            {
+                worldGridIndex.Refresh(connection);
+            }
+        }
+    }
+
     // 특정 이름을 다른 클라이언트가 이미 사용 중인지 확인합니다.
     // 현재 플레이어 주변 AOI 후보 셀에서 실제 시야 거리 안의 클라이언트만 고릅니다.
     private ClientConnection[] GetNearbyCandidates(ClientConnection center)
     {
         // 중심 플레이어가 속한 AOI 셀을 계산합니다.
         WorldGridCell centerCell = WorldGrid.GetCell(center.Session.MapId, center.Session.Position);
-        // 중심 셀과 주변 8개 셀만 후보로 삼습니다.
-        var candidateCells = new HashSet<WorldGridCell>(WorldGrid.GetNeighborCells(centerCell));
-
-        // 후보 셀 안에 있으면서 실제 거리 조건까지 통과한 플레이어만 반환합니다.
-        return clients
+        // 인덱스에서 중심 셀과 주변 8개 셀에 등록된 플레이어만 후보로 가져옵니다.
+        return worldGridIndex.SnapshotCandidates(centerCell)
             .Where(client =>
                 client != center &&
                 client.Session.IsSpawned &&
-                candidateCells.Contains(WorldGrid.GetCell(client.Session.MapId, client.Session.Position)) &&
+                client.Session.MapId == center.Session.MapId &&
                 WorldRules.IsNearby(client.Session.Position, center.Session.Position))
             .ToArray();
     }
@@ -257,6 +269,7 @@ public sealed class ClientRegistry
             ClientConnection[] snapshot = clients.ToArray();
             // 서버 종료 중에는 목록을 비워서 중복 정리를 줄입니다.
             clients.Clear();
+            worldGridIndex.Clear();
             // 닫을 클라이언트 목록을 반환합니다.
             return snapshot;
         }

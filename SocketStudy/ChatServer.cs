@@ -42,7 +42,8 @@ sealed class ChatServer
             () => serverStartedAt,
             movementRequests,
             worldTickProcessor,
-            worldEvents);
+            worldEvents,
+            clients.RefreshWorldIndex);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

@@ -21,6 +21,7 @@ RunWorldTickProcessorTest();
 await RunWorldEventQueueTestAsync();
 RunWorldRulesTest();
 RunWorldGridTest();
+await RunWorldGridIndexTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -649,6 +650,41 @@ static void RunWorldGridTest()
         neighborCells.Contains(new WorldGridCell(2, 0, 0)))
     {
         throw new InvalidOperationException("WorldGrid should return the 3x3 neighbor cells on the same map.");
+    }
+}
+
+static async Task RunWorldGridIndexTestAsync()
+{
+    await using NetworkPair firstPair = await NetworkPair.ConnectAsync();
+    await using NetworkPair secondPair = await NetworkPair.ConnectAsync();
+    var first = new ClientConnection("alice", firstPair.Client, firstPair.ClientStream);
+    var second = new ClientConnection("bob", secondPair.Client, secondPair.ClientStream);
+    var index = new WorldGridIndex();
+
+    first.Session.Spawn();
+    second.Session.MoveTo(new WorldPosition(WorldRules.GridCellSize, 0));
+    second.Session.Spawn();
+    index.Refresh(first);
+    index.Refresh(second);
+
+    ClientConnection[] candidates = index.SnapshotCandidates(
+        WorldGrid.GetCell(first.Session.MapId, first.Session.Position));
+    if (index.Count != 2 || !candidates.Contains(first) || !candidates.Contains(second))
+    {
+        throw new InvalidOperationException("WorldGridIndex should return players from the center and neighboring cells.");
+    }
+
+    second.Session.Despawn();
+    index.Refresh(second);
+    if (index.Count != 1 || index.SnapshotCandidates(WorldGrid.GetCell(1, WorldPosition.Origin)).Contains(second))
+    {
+        throw new InvalidOperationException("WorldGridIndex should remove despawned players during refresh.");
+    }
+
+    index.Clear();
+    if (index.Count != 0)
+    {
+        throw new InvalidOperationException("WorldGridIndex should clear all indexed players.");
     }
 }
 
@@ -2403,7 +2439,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             () => ServerStartedAt,
             CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor),
             worldTickProcessor,
-            new WorldEventQueue());
+            new WorldEventQueue(),
+            _ => { });
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)
