@@ -18,6 +18,7 @@ RunWorldEventTest();
 RunMovementTickProcessorTest();
 RunMovementRequestQueueTest();
 RunWorldTickProcessorTest();
+await RunWorldEventQueueTestAsync();
 RunWorldRulesTest();
 RunWorldGridTest();
 RunServerPortParseTest();
@@ -529,6 +530,33 @@ static void RunWorldTickProcessorTest()
     if (processor.ProcessOnce().Movements.Count != 0)
     {
         throw new InvalidOperationException("WorldTickProcessor should return an empty result when no input is queued.");
+    }
+}
+
+static async Task RunWorldEventQueueTestAsync()
+{
+    await using NetworkPair pair = await NetworkPair.ConnectAsync();
+    var source = new ClientConnection("alice", pair.Client, pair.ClientStream);
+    var queue = new WorldEventQueue();
+    var first = new QueuedWorldEvent(source, WorldEvent.PlayerSpawned("alice", 1, WorldPosition.Origin));
+    var second = new QueuedWorldEvent(source, WorldEvent.PlayerMoved("alice", 1, new WorldPosition(1, 0)));
+
+    queue.Enqueue(first);
+    queue.Enqueue(second);
+
+    if (queue.Count != 2 || !queue.TryDequeue(out QueuedWorldEvent? dequeuedFirst) || dequeuedFirst != first)
+    {
+        throw new InvalidOperationException("WorldEventQueue should dequeue the oldest event first.");
+    }
+
+    if (!queue.TryDequeue(out QueuedWorldEvent? dequeuedSecond) || dequeuedSecond != second)
+    {
+        throw new InvalidOperationException("WorldEventQueue should preserve FIFO order.");
+    }
+
+    if (queue.Count != 0 || queue.TryDequeue(out _))
+    {
+        throw new InvalidOperationException("WorldEventQueue should report an empty queue after draining.");
     }
 }
 
@@ -2374,7 +2402,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             () => CurrentTime,
             () => ServerStartedAt,
             CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor),
-            worldTickProcessor);
+            worldTickProcessor,
+            new WorldEventQueue());
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)
