@@ -1693,3 +1693,30 @@ ClientConnection -> 현재 등록된 WorldGridCell
 - 몬스터는 클라이언트가 아니라 서버가 생성하고 관리하는 권한 모델을 사용합니다.
 - `MonsterRegistry`는 엔티티 ID의 유일성과 맵별 스냅샷을 책임집니다.
 - 다음 발전 단계에서는 몬스터 상태, AI tick, 타깃 탐색, 이동 요청, 전투 판정을 차례로 붙일 수 있습니다.
+
+### 다음 단계 1. 고정 주기 WorldTickLoop
+
+이번 step에서는 `/move` 명령이 `WorldTickProcessor.ProcessOnce()`를 직접 호출하던 구조를 제거하고, 독립적인 `WorldTickLoop`가 50ms마다 월드 입력 큐를 처리하도록 변경했습니다. 현재 학습 서버의 tick rate는 초당 20회입니다.
+
+```text
+네트워크 작업                     월드 작업
+/move 수신
+-> QueuedMovementRequest
+-> MovementRequestQueue  ------>  50ms 주기 WorldTickLoop
+                                  -> WorldTickProcessor.ProcessOnce()
+                                  -> 이동 검증 및 상태 적용
+<------- Completion 결과 전달 ---+
+-> 클라이언트 응답 및 AOI 알림
+```
+
+`QueuedMovementRequest`는 `TaskCompletionSource<MovementTickResult>`를 이용해 처리 완료 신호를 제공합니다. 네트워크 작업은 큐에 요청을 넣은 후 비동기로 기다리며, 월드 tick이 처리 결과를 설정하면 다시 실행됩니다.
+
+공부 포인트:
+
+- 네트워크 패킷이 도착한 순간과 게임 상태가 변경되는 순간이 분리됐습니다.
+- 모든 이동은 서버가 정한 tick 경계에서 처리되므로 시뮬레이션 순서를 제어하기 쉬워집니다.
+- `RunContinuationsAsynchronously`는 완료 신호를 받은 네트워크 후속 작업이 월드 tick 실행 흐름을 직접 점유하지 않게 합니다.
+- `PeriodicTimer`는 busy loop 없이 일정한 간격으로 비동기 tick을 실행합니다.
+- 서버 종료 시 큐에 이미 들어온 요청을 마지막으로 처리해 대기 작업이 영원히 남지 않게 했습니다.
+
+현재는 이동만 tick 입력으로 처리합니다. 다음 단계에서는 몬스터 AI 판단과 이동도 같은 월드 tick에 포함할 수 있습니다.

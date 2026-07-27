@@ -18,6 +18,7 @@ RunWorldEventTest();
 RunMovementTickProcessorTest();
 RunMovementRequestQueueTest();
 RunWorldTickProcessorTest();
+await RunWorldTickLoopTestAsync();
 await RunWorldEventQueueTestAsync();
 RunWorldRulesTest();
 RunWorldGridTest();
@@ -534,6 +535,31 @@ static void RunWorldTickProcessorTest()
     {
         throw new InvalidOperationException("WorldTickProcessor should return an empty result when no input is queued.");
     }
+}
+
+static async Task RunWorldTickLoopTestAsync()
+{
+    var queue = new MovementRequestQueue();
+    var processor = new WorldTickProcessor(queue);
+    var loop = new WorldTickLoop(processor, TimeSpan.FromMilliseconds(5));
+    using var cancellation = new CancellationTokenSource();
+    Task loopTask = loop.RunAsync(cancellation.Token);
+    var session = new PlayerSession();
+    session.Spawn();
+    var queuedRequest = new QueuedMovementRequest(
+        session,
+        new MovementRequest(1, new WorldPosition(1, 0), DateTimeOffset.UnixEpoch));
+
+    queue.Enqueue(queuedRequest);
+    MovementTickResult result = await queuedRequest.Completion.WaitAsync(TimeSpan.FromSeconds(1));
+
+    if (!result.IsAccepted || session.Position != new WorldPosition(1, 0))
+    {
+        throw new InvalidOperationException("WorldTickLoop should process queued movement on a timer tick.");
+    }
+
+    cancellation.Cancel();
+    await loopTask;
 }
 
 static async Task RunWorldEventQueueTestAsync()
@@ -2456,6 +2482,10 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 {
     private readonly NetworkPair pair;
 
+    private readonly CancellationTokenSource worldTickCancellation = new();
+
+    private readonly Task worldTickTask;
+
     public ClientConnection Connection { get; }
 
     public ClientConnection TargetConnection { get; }
@@ -2486,6 +2516,10 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
         Connection = new ClientConnection(name, pair.Client, pair.ClientStream);
         TargetConnection = new ClientConnection("bob", pair.Server, pair.ServerStream);
 
+        MovementRequestQueue movementRequests = CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor);
+        worldTickTask = new WorldTickLoop(worldTickProcessor, TimeSpan.FromMilliseconds(1))
+            .RunAsync(worldTickCancellation.Token);
+
         Handler = new ChatCommandHandler(
             SendToClientAsync,
             BroadcastNoticeAsync,
@@ -2502,8 +2536,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             MoveClientToRoomAsync,
             () => CurrentTime,
             () => ServerStartedAt,
-            CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor),
-            worldTickProcessor,
+            movementRequests,
             new WorldEventQueue(),
             _ => { },
             Monsters);
@@ -2524,6 +2557,9 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        worldTickCancellation.Cancel();
+        await worldTickTask;
+        worldTickCancellation.Dispose();
         await pair.DisposeAsync();
     }
 

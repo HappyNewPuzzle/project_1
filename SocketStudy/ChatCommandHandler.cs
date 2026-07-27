@@ -121,8 +121,6 @@ public sealed class ChatCommandHandler
 
     private readonly MovementRequestQueue movementRequests;
 
-    private readonly WorldTickProcessor worldTickProcessor;
-
     private readonly WorldEventQueue worldEvents;
 
     private readonly Action<ClientConnection> refreshWorldIndex;
@@ -147,7 +145,6 @@ public sealed class ChatCommandHandler
         Func<DateTimeOffset> getCurrentTime,
         Func<DateTimeOffset> getServerStartedAt,
         MovementRequestQueue movementRequests,
-        WorldTickProcessor worldTickProcessor,
         WorldEventQueue worldEvents,
         Action<ClientConnection> refreshWorldIndex,
         MonsterRegistry monsters)
@@ -183,7 +180,6 @@ public sealed class ChatCommandHandler
         // 서버 시작 시각 조회 함수를 저장합니다.
         this.getServerStartedAt = getServerStartedAt;
         this.movementRequests = movementRequests;
-        this.worldTickProcessor = worldTickProcessor;
         this.worldEvents = worldEvents;
         this.refreshWorldIndex = refreshWorldIndex;
         this.monsters = monsters;
@@ -536,21 +532,12 @@ public sealed class ChatCommandHandler
             }
 
             // 세션 위치와 마지막 승인 이동 시각 및 순서 번호를 함께 변경합니다.
-            movementRequests.Enqueue(new QueuedMovementRequest(
+            var queuedRequest = new QueuedMovementRequest(
                 connection.Session,
-                new MovementRequest(sequence, nextPosition, currentTime)));
+                new MovementRequest(sequence, nextPosition, currentTime));
+            movementRequests.Enqueue(queuedRequest);
 
-            WorldTickResult tickResult = worldTickProcessor.ProcessOnce();
-            ProcessedMovement? processedMovement = tickResult.Movements.LastOrDefault(
-                movement => ReferenceEquals(movement.QueuedRequest.Session, connection.Session));
-
-            if (processedMovement is null)
-            {
-                await sendToClientAsync(connection, MessageType.Notice, "Move was not processed by the world tick.");
-                return true;
-            }
-
-            MovementTickResult movementResult = processedMovement.Result;
+            MovementTickResult movementResult = await queuedRequest.Completion;
 
             if (!movementResult.IsAccepted)
             {

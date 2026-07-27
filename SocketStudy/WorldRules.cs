@@ -25,6 +25,9 @@ public static class WorldRules
     // 연속 이동 명령 사이에 필요한 최소 서버 시간입니다.
     public static readonly TimeSpan MoveCooldown = TimeSpan.FromSeconds(1);
 
+    // The learning server updates its world twenty times per second.
+    public static readonly TimeSpan WorldTickInterval = TimeSpan.FromMilliseconds(50);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

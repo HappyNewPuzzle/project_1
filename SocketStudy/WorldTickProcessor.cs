@@ -23,6 +23,7 @@ public sealed class WorldTickProcessor
                 queuedRequest.Session,
                 queuedRequest.Request);
 
+            queuedRequest.TryComplete(result);
             processedMovements.Add(new ProcessedMovement(queuedRequest, result));
         }
 

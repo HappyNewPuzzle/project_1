@@ -11,6 +11,8 @@ sealed class ChatServer
 
     private readonly WorldTickProcessor worldTickProcessor;
 
+    private readonly WorldTickLoop worldTickLoop;
+
     private readonly WorldEventQueue worldEvents = new();
 
     private readonly MonsterRegistry monsters = new();
@@ -24,6 +26,7 @@ sealed class ChatServer
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
         worldTickProcessor = new WorldTickProcessor(movementRequests);
+        worldTickLoop = new WorldTickLoop(worldTickProcessor, WorldRules.WorldTickInterval);
 
         // command handler가 필요한 서버 기능을 함수 형태로 전달합니다.
         commandHandler = new ChatCommandHandler(
@@ -43,7 +46,6 @@ sealed class ChatServer
             () => DateTimeOffset.Now,
             () => serverStartedAt,
             movementRequests,
-            worldTickProcessor,
             worldEvents,
             clients.RefreshWorldIndex,
             monsters);
@@ -54,6 +56,8 @@ sealed class ChatServer
     {
         // IPAddress.Any는 이 PC의 모든 네트워크 인터페이스에서 접속을 받겠다는 뜻입니다.
         var listener = new TcpListener(IPAddress.Any, port);
+        using var worldTickCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task worldTickTask = worldTickLoop.RunAsync(worldTickCancellation.Token);
 
         // 서버 종료 시 listener를 반드시 닫기 위해 try/finally를 사용합니다.
         try
@@ -90,6 +94,9 @@ sealed class ChatServer
             listener.Stop();
             // 현재 접속 중인 모든 클라이언트 연결을 닫습니다.
             CloseAllClients();
+            // 정상 종료뿐 아니라 시작 실패에서도 독립 tick 작업을 반드시 중지합니다.
+            worldTickCancellation.Cancel();
+            await worldTickTask;
             // 서버 종료 완료를 콘솔에 출력합니다.
             AppLogger.Info("[server] Server stopped.");
         }
