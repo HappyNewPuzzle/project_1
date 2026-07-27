@@ -125,7 +125,7 @@ static async Task RunClientTaskTrackerTestAsync()
         throw new InvalidOperationException("Client task tracker should count active tasks.");
     }
 
-    Task waitTask = tracker.WaitForAllAsync();
+    Task<ClientTaskWaitResult> waitTask = tracker.WaitForAllAsync(TimeSpan.FromSeconds(1));
     firstCompletion.SetResult();
     await Task.Yield();
     if (waitTask.IsCompleted)
@@ -134,12 +134,30 @@ static async Task RunClientTaskTrackerTestAsync()
     }
 
     secondCompletion.SetResult();
-    await waitTask;
+    ClientTaskWaitResult completed = await waitTask;
 
-    if (tracker.Count != 0)
+    if (!completed.Completed ||
+        completed.RemainingTaskCount != 0 ||
+        tracker.Count != 0)
     {
         throw new InvalidOperationException("Completed client tasks should be removed from the tracker.");
     }
+
+    var timeoutTracker = new ClientTaskTracker();
+    var pendingCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    timeoutTracker.Track(pendingCompletion.Task);
+
+    ClientTaskWaitResult timedOut = await timeoutTracker.WaitForAllAsync(
+        TimeSpan.FromMilliseconds(20));
+    if (timedOut.Completed ||
+        timedOut.RemainingTaskCount != 1 ||
+        timedOut.Elapsed < TimeSpan.FromMilliseconds(10))
+    {
+        throw new InvalidOperationException("Client task tracker should report tasks left after the shutdown timeout.");
+    }
+
+    pendingCompletion.SetResult();
+    await timeoutTracker.WaitForAllAsync(TimeSpan.FromSeconds(1));
 }
 
 static async Task RunProtocolRoundTripTestAsync(MessageType type, string text)

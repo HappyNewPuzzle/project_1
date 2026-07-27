@@ -2202,3 +2202,37 @@ clientTasks.Track(HandleClientAsync(client, cancellationToken));
 - 테스트는 두 개의 `TaskCompletionSource`를 사용해 하나의 작업만 끝난 상태에서는 전체 종료 대기가 완료되지 않는지 검증합니다.
 
 다음 단계에서는 종료 시간을 무한정 기다리지 않도록 shutdown timeout을 두고, 시간 초과 시 남은 작업 수와 저장 실패 플레이어를 기록하는 운영 정책을 추가할 수 있습니다.
+
+### 다음 단계 14. Shutdown timeout과 종료 상태 보고
+
+이번 step에서는 graceful shutdown이 특정 클라이언트 작업 때문에 무한히 멈추지 않도록 10초 제한 시간을 추가했습니다.
+
+```text
+클라이언트 작업 전체 대기
+├─ 10초 안에 완료: Completed=true, RemainingTaskCount=0
+└─ 10초 초과:     Completed=false, 현재 남은 작업 수 기록
+```
+
+`ClientTaskTracker.WaitForAllAsync`는 이제 `ClientTaskWaitResult`를 반환합니다.
+
+```csharp
+public sealed record ClientTaskWaitResult(
+    bool Completed,
+    int RemainingTaskCount,
+    TimeSpan Elapsed);
+```
+
+서버는 정상 종료라면 실제 소요 시간을 info 로그로 남깁니다. 제한 시간을 초과하면 종료를 계속 진행하면서 남은 클라이언트 작업 수를 error 로그로 남깁니다. 제한 시간은 `WorldRules.ServerShutdownTimeout`에 모아 현재 10초로 설정했습니다.
+
+연결 종료 저장에서 `Conflict` 또는 `Failed`가 발생한 플레이어 ID도 서버가 집계합니다. 종료 마지막에는 실패가 없었다는 요약 또는 실패한 플레이어 ID 목록을 기록하므로 운영자가 데이터베이스와 로그를 조사할 대상을 알 수 있습니다. 이후 같은 플레이어 저장이 성공하면 실패 목록에서 제거됩니다.
+
+공부 포인트:
+
+- graceful shutdown에는 기다림뿐 아니라 기다릴 수 있는 최대 시간도 필요합니다.
+- timeout은 실행 중인 작업 자체를 강제로 중단하지 않으며, 서버가 더 기다리지 않겠다는 운영 정책입니다.
+- `Task.WhenAny`로 전체 완료 작업과 timeout 작업 중 먼저 끝나는 쪽을 확인할 수 있습니다.
+- 결과 객체를 사용하면 bool 하나보다 완료 여부, 남은 작업 수, 소요 시간을 함께 전달할 수 있습니다.
+- 종료 요약 로그는 장애 이후 어떤 캐릭터 저장을 확인해야 하는지 알려주는 최소한의 운영 정보입니다.
+- 테스트에서는 20ms 제한을 사용해 실제 10초를 기다리지 않고 timeout 경로를 검증합니다.
+
+다음 단계에서는 서버 상태를 `Starting`, `Running`, `Draining`, `Stopped`로 명시하고, draining 중 신규 로그인과 게임 명령을 거부하는 생명주기 상태 머신을 추가할 수 있습니다.

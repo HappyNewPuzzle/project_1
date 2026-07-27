@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Collections.Concurrent;
 
 // TCP 채팅 서버의 실행과 클라이언트 관리를 담당합니다.
 sealed class ChatServer
@@ -32,6 +33,7 @@ sealed class ChatServer
     private readonly CharacterSaveService characterSaves;
     private readonly CharacterAutosaveLoop characterAutosaveLoop;
     private readonly ClientTaskTracker clientTasks = new();
+    private readonly ConcurrentDictionary<long, byte> failedCharacterSaves = new();
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -148,7 +150,18 @@ sealed class ChatServer
             worldTickCancellation.Cancel();
             try
             {
-                await clientTasks.WaitForAllAsync();
+                ClientTaskWaitResult clientWait = await clientTasks.WaitForAllAsync(
+                    WorldRules.ServerShutdownTimeout);
+                if (clientWait.Completed)
+                {
+                    AppLogger.Info(
+                        $"[server] Client shutdown completed in {clientWait.Elapsed.TotalMilliseconds:F0} ms.");
+                }
+                else
+                {
+                    AppLogger.Error(
+                        $"[server] Client shutdown timed out after {clientWait.Elapsed.TotalSeconds:F1} s. Remaining tasks: {clientWait.RemainingTaskCount}.");
+                }
             }
             catch (Exception ex)
             {
@@ -157,6 +170,7 @@ sealed class ChatServer
             await worldTickTask;
             await combatEventTask;
             await autosaveTask;
+            LogSaveFailureSummary();
             // 서버 종료 완료를 콘솔에 출력합니다.
             AppLogger.Info("[server] Server stopped.");
         }
@@ -240,7 +254,12 @@ sealed class ChatServer
                 CancellationToken.None);
             if (disconnectSave.Status is CharacterSaveStatus.Conflict or CharacterSaveStatus.Failed)
             {
+                failedCharacterSaves.TryAdd(connection.Session.PlayerId, 0);
                 AppLogger.Error($"[server] Failed to save player {connection.Session.PlayerId} during disconnect.");
+            }
+            else if (disconnectSave.Status == CharacterSaveStatus.Saved)
+            {
+                failedCharacterSaves.TryRemove(connection.Session.PlayerId, out _);
             }
             // 현재 클라이언트를 서버의 접속자 목록에서 제거합니다.
             RemoveClient(connection);
@@ -417,5 +436,21 @@ sealed class ChatServer
             // 각 클라이언트 소켓을 닫아 pending read/write를 깨웁니다.
             client.Close();
         }
+    }
+
+    private void LogSaveFailureSummary()
+    {
+        long[] playerIds = failedCharacterSaves.Keys
+            .Where(playerId => playerId > 0)
+            .Order()
+            .ToArray();
+        if (playerIds.Length == 0)
+        {
+            AppLogger.Info("[server] Character shutdown saves completed without recorded failures.");
+            return;
+        }
+
+        AppLogger.Error(
+            $"[server] Character shutdown save failures ({playerIds.Length}): {string.Join(", ", playerIds)}");
     }
 }

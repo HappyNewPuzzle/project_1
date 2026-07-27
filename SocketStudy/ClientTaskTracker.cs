@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 public sealed class ClientTaskTracker
 {
@@ -16,17 +17,39 @@ public sealed class ClientTaskTracker
         _ = RemoveWhenCompletedAsync(taskId, task);
     }
 
-    public async Task WaitForAllAsync()
+    public async Task<ClientTaskWaitResult> WaitForAllAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
+
+        var stopwatch = Stopwatch.StartNew();
         Task[] snapshot = tasks.Values.ToArray();
         if (snapshot.Length == 0)
         {
-            return;
+            return new(true, 0, stopwatch.Elapsed);
         }
 
+        Task allTasks = Task.WhenAll(snapshot);
         try
         {
-            await Task.WhenAll(snapshot);
+            Task completedTask = await Task.WhenAny(
+                allTasks,
+                Task.Delay(timeout, cancellationToken));
+            if (completedTask != allTasks)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (allTasks.IsCompleted)
+                {
+                    await allTasks;
+                    return new(true, 0, stopwatch.Elapsed);
+                }
+
+                return new(false, Count, stopwatch.Elapsed);
+            }
+
+            await allTasks;
+            return new(true, 0, stopwatch.Elapsed);
         }
         finally
         {
