@@ -12,6 +12,7 @@ public sealed class ChatCommandHandler
         "/whoami",
         "/session",
         "/health",
+        "/experience",
         "/login <playerId>",
         "/logout",
         "/pos",
@@ -289,6 +290,15 @@ public sealed class ChatCommandHandler
                 connection,
                 MessageType.Notice,
                 $"Health: {connection.Session.CurrentHealth}/{connection.Session.MaxHealth}, state={lifeState}");
+            return true;
+        }
+
+        if (message.Text.Equals("/experience", StringComparison.OrdinalIgnoreCase))
+        {
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Experience: {connection.Session.Experience}");
             return true;
         }
 
@@ -702,9 +712,13 @@ public sealed class ChatCommandHandler
             }
 
             string outcome = result.IsFatal
-                ? $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds."
+                ? $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. +{result.ExperienceAwarded} XP. Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds."
                 : $"Attacked {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. HP: {result.RemainingHealth}/{WorldRules.MonsterMaxHealth}";
             await sendToClientAsync(connection, MessageType.Notice, outcome);
+            string nearbyOutcome = result.IsFatal
+                ? $"{connection.Name} defeated {result.MonsterType}#{result.MonsterId}."
+                : $"{connection.Name} hit {result.MonsterType}#{result.MonsterId} for {result.Damage} damage.";
+            await broadcastNearbyNoticeAsync(connection, nearbyOutcome);
             return true;
         }
 

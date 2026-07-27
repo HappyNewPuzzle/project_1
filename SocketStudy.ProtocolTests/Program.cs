@@ -2626,7 +2626,14 @@ public static async Task RunPlayerCombatTickTestAsync()
 
     PlayerAttackResult second = await AttackAtAsync(start + WorldRules.PlayerAttackInterval);
     PlayerAttackResult fatal = await AttackAtAsync(start + WorldRules.PlayerAttackInterval + WorldRules.PlayerAttackInterval);
-    if (!second.IsAccepted || !fatal.IsFatal || fatal.Damage != 10 || monsters.Find(70)?.IsSpawned != false)
+    MonsterEntity? defeatedMonster = monsters.Find(70);
+    if (!second.IsAccepted ||
+        !fatal.IsFatal ||
+        fatal.Damage != 10 ||
+        fatal.ExperienceAwarded != WorldRules.MonsterKillExperience ||
+        attacker.Experience != WorldRules.MonsterKillExperience ||
+        defeatedMonster?.IsSpawned != false ||
+        defeatedMonster.KillCreditPlayerId != attacker.PlayerId)
     {
         throw new InvalidOperationException("Fatal player damage should despawn the monster and clamp applied damage.");
     }
@@ -2647,9 +2654,42 @@ public static async Task RunPlayerCombatTickTestAsync()
     MonsterEntity respawned = respawnTick.RespawnedMonsters.Single();
     if (!respawned.IsSpawned ||
         respawned.CurrentHealth != respawned.MaxHealth ||
-        respawned.Position != respawned.SpawnPosition)
+        respawned.Position != respawned.SpawnPosition ||
+        respawned.KillCreditPlayerId is not null)
     {
         throw new InvalidOperationException("Monster should respawn at full health and its original spawn position.");
+    }
+
+    await RunCombatEventDispatchLoopTestAsync();
+}
+
+private static async Task RunCombatEventDispatchLoopTestAsync()
+{
+    var events = new CombatEventQueue();
+    var dispatched = new List<CombatNotification>();
+    var delivered = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    using var cancellation = new CancellationTokenSource();
+    var loop = new CombatEventDispatchLoop(
+        events,
+        notification =>
+        {
+            dispatched.Add(notification);
+            delivered.TrySetResult(true);
+            return Task.CompletedTask;
+        },
+        TimeSpan.FromMilliseconds(1));
+    Task loopTask = loop.RunAsync(cancellation.Token);
+    var notification = new CombatNotification(100, "combat event");
+    events.Enqueue(notification);
+
+    await delivered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    cancellation.Cancel();
+    await loopTask;
+
+    if (dispatched.Count != 1 || dispatched[0] != notification)
+    {
+        throw new InvalidOperationException("Combat event dispatch loop should deliver each queued event once.");
     }
 }
 
@@ -2702,6 +2742,19 @@ public static async Task RunMonsterCommandsTestAsync()
     if (context.SentMessages.Last().Text != "Attacked slime#10 for 20 damage. HP: 30/50")
     {
         throw new InvalidOperationException("/attack should return the world-tick combat result.");
+    }
+
+    if (context.NearbyNotices.LastOrDefault() != "alice hit slime#10 for 20 damage.")
+    {
+        throw new InvalidOperationException("/attack should notify nearby players about combat.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/experience"));
+    if (context.SentMessages.Last().Text != "Experience: 0")
+    {
+        throw new InvalidOperationException("/experience should show server-owned experience.");
     }
 }
 }

@@ -20,4 +20,6 @@ public sealed record MonsterEntity(
     public DateTimeOffset? LastAttackedAt { get; init; }
 
     public DateTimeOffset? RespawnAt { get; init; }
+
+    public long? KillCreditPlayerId { get; init; }
 }

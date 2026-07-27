@@ -224,6 +224,14 @@ public sealed class ClientRegistry
         }
     }
 
+    public ClientConnection? FindByPlayerId(long playerId)
+    {
+        lock (gate)
+        {
+            return clients.FirstOrDefault(client => client.Session.PlayerId == playerId);
+        }
+    }
+
     // 현재 접속자 목록의 복사본을 가져옵니다.
     public ClientConnection[] Snapshot(ClientConnection? except = null)
     {

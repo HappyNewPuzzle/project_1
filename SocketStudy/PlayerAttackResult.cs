@@ -6,15 +6,17 @@ public sealed record PlayerAttackResult(
     string? MonsterType,
     int Damage,
     int RemainingHealth,
-    bool IsFatal)
+    bool IsFatal,
+    int ExperienceAwarded)
 {
     public static PlayerAttackResult Rejected(string reason, long monsterId) =>
-        new(false, reason, monsterId, null, 0, 0, false);
+        new(false, reason, monsterId, null, 0, 0, false, 0);
 
     public static PlayerAttackResult Accepted(
         MonsterEntity monster,
         int damage,
         int remainingHealth,
-        bool isFatal) =>
-        new(true, null, monster.MonsterId, monster.MonsterType, damage, remainingHealth, isFatal);
+        bool isFatal,
+        int experienceAwarded) =>
+        new(true, null, monster.MonsterId, monster.MonsterType, damage, remainingHealth, isFatal, experienceAwarded);
 }

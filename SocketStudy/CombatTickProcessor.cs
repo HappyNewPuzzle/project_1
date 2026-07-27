@@ -64,6 +64,7 @@ public sealed class CombatTickProcessor
         MonsterDamageResult? damageResult = monsters.ApplyDamage(
             request.MonsterId,
             WorldRules.PlayerAttackDamage,
+            attacker.PlayerId,
             serverTime);
         if (damageResult is null)
         {
@@ -71,10 +72,17 @@ public sealed class CombatTickProcessor
         }
 
         attacker.RecordAttack(serverTime);
+        int experienceAwarded = 0;
+        if (damageResult.IsFatal)
+        {
+            experienceAwarded = WorldRules.MonsterKillExperience;
+            attacker.AddExperience(experienceAwarded);
+        }
         return PlayerAttackResult.Accepted(
             damageResult.Monster,
             damageResult.DamageApplied,
             damageResult.RemainingHealth,
-            damageResult.IsFatal);
+            damageResult.IsFatal,
+            experienceAwarded);
     }
 }

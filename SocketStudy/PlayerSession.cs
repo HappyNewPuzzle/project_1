@@ -33,6 +33,8 @@ public sealed class PlayerSession
 
     public DateTimeOffset? LastAttackAt { get; private set; }
 
+    public long Experience { get; private set; }
+
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
     {
@@ -50,6 +52,7 @@ public sealed class PlayerSession
         IsSpawned = false;
         CurrentHealth = MaxHealth;
         LastAttackAt = null;
+        Experience = 0;
     }
 
     // 로그인 성공 후 플레이어 ID를 세션에 연결합니다.
@@ -172,6 +175,16 @@ public sealed class PlayerSession
         LastAttackAt = serverTime;
     }
 
+    public void AddExperience(int amount)
+    {
+        if (amount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(amount), "Experience amount must be positive.");
+        }
+
+        Experience = checked(Experience + amount);
+    }
+
     // 플레이어를 현재 월드에서 사라진 상태로 바꿉니다.
     public void Despawn()
     {
@@ -201,5 +214,6 @@ public sealed class PlayerSession
         LastMoveSequence = 0;
         CurrentHealth = MaxHealth;
         LastAttackAt = null;
+        Experience = 0;
     }
 }

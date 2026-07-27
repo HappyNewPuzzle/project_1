@@ -1854,3 +1854,45 @@ MonsterAiTickProcessor
 - 리스폰은 별도 타이머를 몬스터마다 만들지 않고 월드 tick이 `RespawnAt`을 비교하는 방식입니다.
 
 다음 단계에서는 전투 이벤트를 AOI 플레이어에게 전파하고 경험치와 보상 소유권을 추가할 수 있습니다.
+
+### 다음 단계 6. 전투 이벤트, 경험치와 처치 소유권
+
+이번 step에서는 전투 결과를 주변 AOI 플레이어에게 전파하고, 몬스터를 마지막으로 처치한 플레이어에게 경험치를 지급하도록 확장했습니다.
+
+```text
+몬스터 처치 경험치: 25 XP
+```
+
+플레이어 공격은 명령 응답 후 주변 플레이어에게 타격 또는 처치 알림을 보냅니다. 월드 tick에서 자동으로 발생하는 몬스터 공격은 `CombatEventQueue`에 넣고 별도의 `CombatEventDispatchLoop`가 대상과 주변 플레이어에게 비동기로 전송합니다.
+
+```text
+WorldTickLoop
+-> MonsterAttack 생성
+-> CombatEventQueue
+
+CombatEventDispatchLoop
+-> 대상 ClientConnection 조회
+-> 대상에게 notice
+-> 주변 AOI 플레이어에게 notice
+```
+
+처치 보상 흐름:
+
+```text
+치명타 적용
+-> MonsterEntity.KillCreditPlayerId 기록
+-> PlayerSession.AddExperience(25)
+-> PlayerAttackResult.ExperienceAwarded 반환
+-> /experience로 누적 경험치 확인
+-> 몬스터 리스폰 시 처치 소유권 초기화
+```
+
+공부 포인트:
+
+- 월드 tick은 소켓 전송을 직접 기다리지 않고 이벤트 큐에 기록하므로 느린 클라이언트가 시뮬레이션을 막지 않습니다.
+- 경험치와 처치 소유권은 치명타를 실제 적용한 서버 tick에서 한 번만 결정됩니다.
+- 거절된 공격과 비치명 공격은 경험치를 지급하지 않습니다.
+- `KillCreditPlayerId`는 리스폰 전까지 감사와 보상 추적에 사용할 수 있습니다.
+- 리스폰 시 이전 생명 주기의 처치 소유권을 반드시 제거합니다.
+
+다음 단계에서는 경험치 기반 레벨과 몬스터별 보상 테이블, 아이템 드롭을 추가할 수 있습니다.

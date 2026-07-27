@@ -61,7 +61,11 @@ public sealed class MonsterRegistry
         }
     }
 
-    public MonsterDamageResult? ApplyDamage(long monsterId, int damage, DateTimeOffset serverTime)
+    public MonsterDamageResult? ApplyDamage(
+        long monsterId,
+        int damage,
+        long attackerPlayerId,
+        DateTimeOffset serverTime)
     {
         if (damage <= 0)
         {
@@ -84,7 +88,8 @@ public sealed class MonsterRegistry
                 IsSpawned = !isFatal,
                 AiState = isFatal ? MonsterAiState.Idle : current.AiState,
                 AggroTargetPlayerId = isFatal ? null : current.AggroTargetPlayerId,
-                RespawnAt = isFatal ? serverTime + WorldRules.MonsterRespawnDelay : null
+                RespawnAt = isFatal ? serverTime + WorldRules.MonsterRespawnDelay : null,
+                KillCreditPlayerId = isFatal ? attackerPlayerId : null
             };
             monsters[monsterId] = updated;
             return new MonsterDamageResult(updated, appliedDamage, remainingHealth, isFatal);
@@ -114,7 +119,8 @@ public sealed class MonsterRegistry
                     AggroTargetPlayerId = null,
                     LastMovedAt = null,
                     LastAttackedAt = null,
-                    RespawnAt = null
+                    RespawnAt = null,
+                    KillCreditPlayerId = null
                 };
                 monsters[monster.MonsterId] = updated;
                 respawned.Add(updated);

@@ -19,6 +19,10 @@ sealed class ChatServer
 
     private readonly CombatTickProcessor combatTickProcessor;
 
+    private readonly CombatEventQueue combatEvents = new();
+
+    private readonly CombatEventDispatchLoop combatEventDispatchLoop;
+
     private readonly WorldEventQueue worldEvents = new();
 
     private readonly MonsterRegistry monsters = new();
@@ -37,13 +41,24 @@ sealed class ChatServer
             clients.SnapshotSpawnedPlayerEntities,
             clients.ApplyDamage);
         combatTickProcessor = new CombatTickProcessor(attackRequests, monsters);
+        combatEventDispatchLoop = new CombatEventDispatchLoop(
+            combatEvents,
+            DispatchCombatNotificationAsync,
+            WorldRules.WorldTickInterval);
         worldTickLoop = new WorldTickLoop(
             worldTickProcessor,
             WorldRules.WorldTickInterval,
             serverTime =>
             {
                 combatTickProcessor.Process(serverTime);
-                monsterAiTickProcessor.Process(serverTime);
+                MonsterAiTickResult aiResult = monsterAiTickProcessor.Process(serverTime);
+                foreach (MonsterAttack attack in aiResult.Attacks)
+                {
+                    string outcome = attack.IsFatal
+                        ? $"Monster #{attack.MonsterId} defeated player #{attack.TargetPlayerId} for {attack.Damage} damage."
+                        : $"Monster #{attack.MonsterId} hit player #{attack.TargetPlayerId} for {attack.Damage} damage. HP: {attack.RemainingHealth}/{WorldRules.PlayerMaxHealth}";
+                    combatEvents.Enqueue(new CombatNotification(attack.TargetPlayerId, outcome));
+                }
             });
 
         // command handler가 필요한 서버 기능을 함수 형태로 전달합니다.
@@ -77,6 +92,7 @@ sealed class ChatServer
         var listener = new TcpListener(IPAddress.Any, port);
         using var worldTickCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task worldTickTask = worldTickLoop.RunAsync(worldTickCancellation.Token);
+        Task combatEventTask = combatEventDispatchLoop.RunAsync(worldTickCancellation.Token);
 
         // 서버 종료 시 listener를 반드시 닫기 위해 try/finally를 사용합니다.
         try
@@ -116,6 +132,7 @@ sealed class ChatServer
             // 정상 종료뿐 아니라 시작 실패에서도 독립 tick 작업을 반드시 중지합니다.
             worldTickCancellation.Cancel();
             await worldTickTask;
+            await combatEventTask;
             // 서버 종료 완료를 콘솔에 출력합니다.
             AppLogger.Info("[server] Server stopped.");
         }
@@ -248,6 +265,18 @@ sealed class ChatServer
             // 이동 알림은 채팅이 아니라 서버 공지로 전달합니다.
             await SendToClientAsync(client, MessageType.Notice, message);
         }
+    }
+
+    private async Task DispatchCombatNotificationAsync(CombatNotification notification)
+    {
+        ClientConnection? center = clients.FindByPlayerId(notification.CenterPlayerId);
+        if (center is null)
+        {
+            return;
+        }
+
+        await SendToClientAsync(center, MessageType.Notice, notification.Message);
+        await BroadcastNearbyNoticeAsync(center, notification.Message);
     }
 
     // 현재 클라이언트를 접속자 목록에 추가하는 메서드입니다.
