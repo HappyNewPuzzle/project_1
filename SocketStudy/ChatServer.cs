@@ -31,6 +31,7 @@ sealed class ChatServer
         Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
     private readonly CharacterSaveService characterSaves;
     private readonly CharacterAutosaveLoop characterAutosaveLoop;
+    private readonly ClientTaskTracker clientTasks = new();
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -127,7 +128,7 @@ sealed class ChatServer
                 // 클라이언트가 접속할 때까지 비동기로 기다렸다가, 접속하면 TcpClient 객체를 받습니다.
                 TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken);
                 // 각 클라이언트를 별도 작업으로 처리해서 다음 클라이언트 접속도 계속 받을 수 있게 합니다.
-                _ = HandleClientAsync(client, cancellationToken);
+                clientTasks.Track(HandleClientAsync(client, cancellationToken));
             }
         }
         // Ctrl+C로 cancellationToken이 취소되면 accept 대기가 OperationCanceledException을 던질 수 있습니다.
@@ -145,6 +146,14 @@ sealed class ChatServer
             CloseAllClients();
             // 정상 종료뿐 아니라 시작 실패에서도 독립 tick 작업을 반드시 중지합니다.
             worldTickCancellation.Cancel();
+            try
+            {
+                await clientTasks.WaitForAllAsync();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"[server] Client task failed during shutdown: {ex.Message}");
+            }
             await worldTickTask;
             await combatEventTask;
             await autosaveTask;

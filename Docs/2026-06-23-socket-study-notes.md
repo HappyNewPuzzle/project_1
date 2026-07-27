@@ -2161,3 +2161,44 @@ dirty로 표시되는 주요 변경:
 - 자동 저장 테스트는 timer를 기다리지 않고 `SaveAllAsync`를 직접 호출해 결정적으로 검증합니다.
 
 다음 단계에서는 graceful shutdown에서 모든 클라이언트 처리 작업을 추적하고 저장 완료 후 서버를 종료하는 구조가 적합합니다.
+
+### 다음 단계 13. Graceful shutdown과 클라이언트 작업 추적
+
+이번 step에서는 접속마다 실행되는 `HandleClientAsync` 작업을 `ClientTaskTracker`에 등록하고, 서버 종료 시 모든 접속 정리가 끝날 때까지 기다리도록 변경했습니다.
+
+기존 코드는 다음처럼 클라이언트 작업을 시작한 뒤 참조를 버렸습니다.
+
+```csharp
+_ = HandleClientAsync(client, cancellationToken);
+```
+
+이 방식에서는 서버 종료 로그가 출력된 뒤에도 연결 종료 저장이 실행 중일 수 있고, 작업 내부의 예상하지 못한 예외도 관찰하기 어렵습니다. 이제 작업을 추적합니다.
+
+```csharp
+clientTasks.Track(HandleClientAsync(client, cancellationToken));
+```
+
+정상 종료 순서:
+
+```text
+1. listener.Stop()으로 신규 접속 중단
+2. CloseAllClients()로 pending 네트워크 읽기/쓰기 해제
+3. world tick, 전투 이벤트, autosave loop 취소
+4. ClientTaskTracker.WaitForAllAsync()로 모든 접속 작업 대기
+5. 각 HandleClientAsync의 finally에서 dirty 캐릭터 저장
+6. 백그라운드 loop의 마지막 정리와 autosave flush 대기
+7. Server stopped 로그 출력
+```
+
+`ClientTaskTracker`는 `ConcurrentDictionary<long, Task>`에 실행 중인 작업을 보관합니다. 작업이 완료되면 별도 continuation이 목록에서 제거하므로 장시간 운영해도 이미 끝난 접속 작업이 계속 메모리에 남지 않습니다.
+
+공부 포인트:
+
+- fire-and-forget 작업도 서버 생명주기에 포함하려면 참조를 추적해야 합니다.
+- 소켓을 먼저 닫으면 `ReadMessageAsync`처럼 대기 중인 I/O가 깨어나 접속 작업의 `finally`로 진입합니다.
+- 클라이언트 작업을 기다려야 연결 종료 저장이 끝난 뒤 프로세스를 종료할 수 있습니다.
+- `Task.WhenAll`은 여러 접속 작업을 동시에 기다리며, 실패한 작업의 예외도 관찰할 수 있습니다.
+- 종료 중 한 작업이 실패해도 서버는 오류를 기록한 뒤 나머지 tick 및 autosave 작업을 계속 정리합니다.
+- 테스트는 두 개의 `TaskCompletionSource`를 사용해 하나의 작업만 끝난 상태에서는 전체 종료 대기가 완료되지 않는지 검증합니다.
+
+다음 단계에서는 종료 시간을 무한정 기다리지 않도록 shutdown timeout을 두고, 시간 초과 시 남은 작업 수와 저장 실패 플레이어를 기록하는 운영 정책을 추가할 수 있습니다.

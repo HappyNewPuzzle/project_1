@@ -42,6 +42,7 @@ await RunClientRegistryFindsNearbyNamesAsync();
 await RunClientRegistryFindsNearbySnapshotsAsync();
 await RunClientRegistryLimitsNearbySnapshotsAsync();
 await RunClientRegistryDrainsConnectionsAsync();
+await RunClientTaskTrackerTestAsync();
 await RunHelpCommandTestAsync();
 await RunCommandsAliasTestAsync();
 await RunWhereCommandTestAsync();
@@ -109,6 +110,37 @@ await RunDuplicateNameCommandTestAsync();
 await RunInvalidNameCommandTestAsync();
 
 Console.WriteLine("All socket study tests passed.");
+
+static async Task RunClientTaskTrackerTestAsync()
+{
+    var tracker = new ClientTaskTracker();
+    var firstCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var secondCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    tracker.Track(firstCompletion.Task);
+    tracker.Track(secondCompletion.Task);
+
+    if (tracker.Count != 2)
+    {
+        throw new InvalidOperationException("Client task tracker should count active tasks.");
+    }
+
+    Task waitTask = tracker.WaitForAllAsync();
+    firstCompletion.SetResult();
+    await Task.Yield();
+    if (waitTask.IsCompleted)
+    {
+        throw new InvalidOperationException("Shutdown should wait until every client task completes.");
+    }
+
+    secondCompletion.SetResult();
+    await waitTask;
+
+    if (tracker.Count != 0)
+    {
+        throw new InvalidOperationException("Completed client tasks should be removed from the tracker.");
+    }
+}
 
 static async Task RunProtocolRoundTripTestAsync(MessageType type, string text)
 {
