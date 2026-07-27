@@ -34,6 +34,7 @@ sealed class ChatServer
     private readonly CharacterAutosaveLoop characterAutosaveLoop;
     private readonly ClientTaskTracker clientTasks = new();
     private readonly ConcurrentDictionary<long, byte> failedCharacterSaves = new();
+    private readonly ServerLifecycle lifecycle = new();
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -98,7 +99,8 @@ sealed class ChatServer
             monsters,
             groundLoot,
             characters,
-            characterSaves);
+            characterSaves,
+            () => lifecycle.State);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
@@ -107,6 +109,14 @@ sealed class ChatServer
         // IPAddress.Any는 이 PC의 모든 네트워크 인터페이스에서 접속을 받겠다는 뜻입니다.
         var listener = new TcpListener(IPAddress.Any, port);
         using var worldTickCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using CancellationTokenRegistration shutdownRegistration = cancellationToken.Register(
+            () =>
+            {
+                if (lifecycle.BeginDraining())
+                {
+                    AppLogger.Info("[server] State changed to Draining.");
+                }
+            });
         Task worldTickTask = worldTickLoop.RunAsync(worldTickCancellation.Token);
         Task combatEventTask = combatEventDispatchLoop.RunAsync(worldTickCancellation.Token);
         Task autosaveTask = characterAutosaveLoop.RunAsync(worldTickCancellation.Token);
@@ -116,6 +126,10 @@ sealed class ChatServer
         {
             // 지정한 포트에서 클라이언트 접속을 받을 준비를 시작합니다.
             listener.Start();
+            if (lifecycle.MarkRunning())
+            {
+                AppLogger.Info("[server] State changed to Running.");
+            }
 
             // 서버가 어떤 주소와 포트에서 대기 중인지 콘솔에 출력합니다.
             AppLogger.Info($"[server] Listening on 0.0.0.0:{port}");
@@ -142,6 +156,10 @@ sealed class ChatServer
         // 성공/실패와 관계없이 서버 socket을 닫고 접속 중인 클라이언트를 정리합니다.
         finally
         {
+            if (lifecycle.BeginDraining())
+            {
+                AppLogger.Info("[server] State changed to Draining.");
+            }
             // 더 이상 새 접속을 받지 않도록 listener를 닫습니다.
             listener.Stop();
             // 현재 접속 중인 모든 클라이언트 연결을 닫습니다.
@@ -171,6 +189,10 @@ sealed class ChatServer
             await combatEventTask;
             await autosaveTask;
             LogSaveFailureSummary();
+            if (lifecycle.MarkStopped())
+            {
+                AppLogger.Info("[server] State changed to Stopped.");
+            }
             // 서버 종료 완료를 콘솔에 출력합니다.
             AppLogger.Info("[server] Server stopped.");
         }

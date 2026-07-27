@@ -2236,3 +2236,41 @@ public sealed record ClientTaskWaitResult(
 - 테스트에서는 20ms 제한을 사용해 실제 10초를 기다리지 않고 timeout 경로를 검증합니다.
 
 다음 단계에서는 서버 상태를 `Starting`, `Running`, `Draining`, `Stopped`로 명시하고, draining 중 신규 로그인과 게임 명령을 거부하는 생명주기 상태 머신을 추가할 수 있습니다.
+
+### 다음 단계 15. 서버 생명주기 상태 머신
+
+이번 step에서는 서버 실행 상태를 명시적인 네 단계로 관리합니다.
+
+```text
+Starting -> Running -> Draining -> Stopped
+    \----------------> Draining
+```
+
+- `Starting`: 객체 생성 후 listener가 아직 준비되지 않은 상태
+- `Running`: listener가 시작되어 정상적으로 접속과 게임 명령을 처리하는 상태
+- `Draining`: 종료 요청을 받아 신규 게임 작업을 만들지 않고 기존 작업을 정리하는 상태
+- `Stopped`: 접속 작업, 저장, 백그라운드 loop 정리가 끝난 상태
+
+`ServerLifecycle`은 `Interlocked.CompareExchange`를 사용해 여러 스레드가 동시에 종료를 요청해도 상태가 역방향으로 이동하거나 같은 전이가 중복 실행되지 않게 합니다. listener 시작이 실패해도 `Starting -> Draining -> Stopped` 경로로 정리할 수 있습니다.
+
+`CancellationToken`의 종료 callback은 서버 상태를 즉시 `Draining`으로 전환합니다. 이후 `ChatServer`의 `finally`가 listener, 접속 작업, 저장 작업을 정리하고 마지막에 `Stopped`로 전환합니다. 각 전이는 서버 로그에 기록됩니다.
+
+Draining 중 차단하는 명령의 예:
+
+- 신규 인증: `/login`
+- 월드 상태: `/spawn`, `/despawn`, `/move`, `/warp`
+- 전투와 전리품: `/attack`, `/loot`, `/pickup`
+- 인벤토리 변경: `/equip`, `/unequip`, `/use`, `/load`
+- 상호작용: `/join`, `/leave`, `/whisper`, `/me`
+
+`/save`, `/logout`, `/quit`은 정리와 데이터 보존에 필요하므로 계속 허용합니다. `/help`, `/session`, `/health` 같은 조회 명령도 사용할 수 있습니다.
+
+공부 포인트:
+
+- 서버 상태를 bool 여러 개로 표현하면 `running=true`, `stopping=true` 같은 모순 조합이 생길 수 있습니다.
+- enum 상태 머신은 현재 단계와 허용할 동작을 한 곳에서 판단하게 합니다.
+- Draining은 즉시 프로세스를 끄는 상태가 아니라 새로운 변경을 막고 진행 중인 작업을 비우는 단계입니다.
+- 명령 처리 진입부에서 정책을 검사하면 각 명령 구현에 같은 조건문을 반복하지 않아도 됩니다.
+- 테스트는 정상 상태 전이, 중복·역방향 전이 거부, Draining 중 로그인·이동 거부와 `/quit` 허용을 검증합니다.
+
+다음 단계에서는 접속 자체에 admission control을 추가해 최대 동시 접속자 수와 IP별 접속 제한을 적용하고, 과부하 상태에서 명확한 거부 응답을 보내는 구조로 발전할 수 있습니다.

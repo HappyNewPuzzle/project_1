@@ -12,6 +12,7 @@ await RunTooLargeLengthTestAsync();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
+RunServerLifecycleTest();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
@@ -55,6 +56,7 @@ await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunSessionCommandTestAsync();
 await RunLoginCommandTestAsync();
+await RunDrainingRejectsGameCommandsTestAsync();
 await RunDuplicateLoginCommandTestAsync();
 await RunLoginWhileSpawnedCommandTestAsync();
 await RunAuthenticatedSessionCommandTestAsync();
@@ -110,6 +112,60 @@ await RunDuplicateNameCommandTestAsync();
 await RunInvalidNameCommandTestAsync();
 
 Console.WriteLine("All socket study tests passed.");
+
+static void RunServerLifecycleTest()
+{
+    var lifecycle = new ServerLifecycle();
+    if (lifecycle.State != ServerLifecycleState.Starting ||
+        !lifecycle.MarkRunning() ||
+        lifecycle.State != ServerLifecycleState.Running ||
+        lifecycle.MarkRunning() ||
+        !lifecycle.BeginDraining() ||
+        lifecycle.State != ServerLifecycleState.Draining ||
+        lifecycle.BeginDraining() ||
+        !lifecycle.MarkStopped() ||
+        lifecycle.State != ServerLifecycleState.Stopped ||
+        lifecycle.MarkRunning())
+    {
+        throw new InvalidOperationException("Server lifecycle should only allow forward state transitions.");
+    }
+
+    var startupFailureLifecycle = new ServerLifecycle();
+    if (!startupFailureLifecycle.BeginDraining() ||
+        !startupFailureLifecycle.MarkStopped() ||
+        startupFailureLifecycle.State != ServerLifecycleState.Stopped)
+    {
+        throw new InvalidOperationException("Server lifecycle should support cleanup after a startup failure.");
+    }
+}
+
+static async Task RunDrainingRejectsGameCommandsTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Lifecycle.BeginDraining();
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login 1001"));
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/move 1 1 1"));
+
+    const string unavailable = "Server shutdown is in progress. This command is unavailable.";
+    if (context.Connection.Session.IsAuthenticated ||
+        context.SentMessages.Count(message => message.Text == unavailable) != 2)
+    {
+        throw new InvalidOperationException("Draining server should reject login and game state commands.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/quit"));
+    if (!context.SentMessages.Any(message => message.Text == "Goodbye."))
+    {
+        throw new InvalidOperationException("Draining server should still allow clients to quit.");
+    }
+}
 
 static async Task RunClientTaskTrackerTestAsync()
 {
@@ -3147,6 +3203,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public InMemoryCharacterRepository Characters { get; } = new();
 
+    public ServerLifecycle Lifecycle { get; } = new();
+
     public string? DuplicateName { get; set; }
 
     public DateTimeOffset CurrentTime { get; set; } = DateTimeOffset.UnixEpoch;
@@ -3163,6 +3221,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
         var attackRequests = new PlayerAttackRequestQueue();
         var combatTickProcessor = new CombatTickProcessor(attackRequests, Monsters, GroundLoot);
         var characterSaves = new CharacterSaveService(Characters);
+        Lifecycle.MarkRunning();
         worldTickTask = new WorldTickLoop(
             worldTickProcessor,
             TimeSpan.FromMilliseconds(1),
@@ -3192,7 +3251,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             Monsters,
             GroundLoot,
             Characters,
-            characterSaves);
+            characterSaves,
+            () => Lifecycle.State);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

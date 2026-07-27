@@ -1,6 +1,14 @@
 // slash command 해석과 처리를 담당합니다.
 public sealed class ChatCommandHandler
 {
+    private static readonly HashSet<string> DrainingBlockedCommands = new(
+        [
+            "/attack", "/despawn", "/equip", "/join", "/leave", "/load",
+            "/login", "/loot", "/me", "/move", "/name", "/pickup", "/rename",
+            "/spawn", "/spawn-monster", "/unequip", "/use", "/warp", "/whisper"
+        ],
+        StringComparer.OrdinalIgnoreCase);
+
     // 방 이름에 허용할 문자 집합입니다.
     // 사용자에게 보여줄 명령 이름 목록입니다.
     private static readonly string[] CommandNames =
@@ -146,6 +154,7 @@ public sealed class ChatCommandHandler
     private readonly GroundLootRegistry groundLoot;
     private readonly ICharacterRepository characters;
     private readonly CharacterSaveService characterSaves;
+    private readonly Func<ServerLifecycleState> getServerState;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -171,7 +180,8 @@ public sealed class ChatCommandHandler
         MonsterRegistry monsters,
         GroundLootRegistry groundLoot,
         ICharacterRepository characters,
-        CharacterSaveService characterSaves)
+        CharacterSaveService characterSaves,
+        Func<ServerLifecycleState> getServerState)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -211,6 +221,7 @@ public sealed class ChatCommandHandler
         this.groundLoot = groundLoot;
         this.characters = characters;
         this.characterSaves = characterSaves;
+        this.getServerState = getServerState;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -221,6 +232,16 @@ public sealed class ChatCommandHandler
         {
             // 명령이 아니라고 호출자에게 알려줍니다.
             return false;
+        }
+
+        if (getServerState() == ServerLifecycleState.Draining &&
+            IsBlockedDuringDraining(message.Text))
+        {
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                "Server shutdown is in progress. This command is unavailable.");
+            return true;
         }
 
         // /name 명령은 클라이언트의 표시 이름을 바꿉니다.
@@ -1229,6 +1250,15 @@ public sealed class ChatCommandHandler
     }
 
     // 방 이름이 허용된 문자로만 이루어졌는지 확인합니다.
+    private static bool IsBlockedDuringDraining(string commandText)
+    {
+        int separatorIndex = commandText.IndexOf(' ');
+        string commandName = separatorIndex < 0
+            ? commandText
+            : commandText[..separatorIndex];
+        return DrainingBlockedCommands.Contains(commandName);
+    }
+
     private static bool IsValidRoomName(string roomName)
     {
         // 모든 문자가 허용된 문자 집합 안에 있는지 확인합니다.
