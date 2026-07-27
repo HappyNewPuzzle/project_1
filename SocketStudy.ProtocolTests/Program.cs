@@ -2426,6 +2426,18 @@ sealed record SentMessage(ClientConnection Connection, MessageType Type, string 
 
 sealed record BroadcastMessage(ClientConnection Connection, string Text);
 
+sealed class FixedRandomSource : IRandomSource
+{
+    private readonly double value;
+
+    public FixedRandomSource(double value)
+    {
+        this.value = value;
+    }
+
+    public double NextDouble() => value;
+}
+
 static class MonsterTests
 {
 public static void RunMonsterRegistryTest()
@@ -2600,7 +2612,7 @@ public static async Task RunPlayerCombatTickTestAsync()
     attacker.Authenticate(700);
     attacker.Spawn();
     var queue = new PlayerAttackRequestQueue();
-    var processor = new CombatTickProcessor(queue, monsters);
+    var processor = new CombatTickProcessor(queue, monsters, new FixedRandomSource(0.05));
     DateTimeOffset start = DateTimeOffset.UnixEpoch;
 
     async Task<PlayerAttackResult> AttackAtAsync(DateTimeOffset serverTime)
@@ -2632,8 +2644,8 @@ public static async Task RunPlayerCombatTickTestAsync()
         fatal.Damage != 10 ||
         fatal.ExperienceAwarded != 30 ||
         attacker.Experience != 30 ||
-        fatal.ItemDrop != new ItemDrop("bone", 1) ||
-        attacker.SnapshotInventory().Single() != new ItemStack("bone", 1) ||
+        !fatal.ItemDrops.Contains(new ItemDrop("bone", 1)) ||
+        !fatal.ItemDrops.Contains(new ItemDrop("health-potion", 1)) ||
         defeatedMonster?.IsSpawned != false ||
         defeatedMonster.KillCreditPlayerId != attacker.PlayerId)
     {
@@ -2647,9 +2659,32 @@ public static async Task RunPlayerCombatTickTestAsync()
     }
 
     MonsterRewardDefinition fallbackReward = MonsterRewardCatalog.Get("unknown-monster");
-    if (fallbackReward.Experience != 20 || fallbackReward.Drop != new ItemDrop("monster-token", 1))
+    if (fallbackReward.Experience != 20 ||
+        fallbackReward.Drops.Single().Drop != new ItemDrop("monster-token", 1))
     {
         throw new InvalidOperationException("Unknown monster types should use the default server reward definition.");
+    }
+
+    attacker.AddItem(new ItemDrop("iron-sword", 1));
+    ItemActionResult equipResult = attacker.Equip("iron-sword");
+    if (!equipResult.IsSuccess || attacker.AttackPower != WorldRules.PlayerAttackDamage + 5)
+    {
+        throw new InvalidOperationException("Equipping a weapon should consume it and add its attack bonus.");
+    }
+
+    attacker.ApplyDamage(20);
+    ItemActionResult useResult = attacker.UseItem("health-potion");
+    if (!useResult.IsSuccess || attacker.CurrentHealth != attacker.MaxHealth)
+    {
+        throw new InvalidOperationException("Using a health potion should consume it and restore missing health.");
+    }
+
+    ItemActionResult unequipResult = attacker.Unequip(EquipmentSlot.Weapon);
+    if (!unequipResult.IsSuccess ||
+        attacker.AttackPower != WorldRules.PlayerAttackDamage ||
+        !attacker.SnapshotInventory().Contains(new ItemStack("iron-sword", 1)))
+    {
+        throw new InvalidOperationException("Unequipping should return the item to inventory and remove its bonus.");
     }
 
     PlayerAttackResult deadTarget = await AttackAtAsync(start + TimeSpan.FromSeconds(2));
@@ -2785,6 +2820,15 @@ public static async Task RunMonsterCommandsTestAsync()
     if (context.SentMessages.Last().Text != "Inventory (0): (empty)")
     {
         throw new InvalidOperationException("/inventory should show an empty server inventory before drops.");
+    }
+
+    context.Connection.Session.AddItem(new ItemDrop("iron-sword", 1));
+    await context.Handler.TryHandleAsync(context.Connection, new NetworkMessage(MessageType.Command, "/equip iron-sword"));
+    await context.Handler.TryHandleAsync(context.Connection, new NetworkMessage(MessageType.Command, "/equipment"));
+    if (!context.SentMessages.Last().Text.Contains("Weapon=iron-sword", StringComparison.Ordinal) ||
+        !context.SentMessages.Last().Text.Contains("attack=25", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Equipment commands should expose the equipped weapon bonus.");
     }
 }
 }

@@ -3,11 +3,16 @@ public sealed class CombatTickProcessor
 {
     private readonly PlayerAttackRequestQueue attackRequests;
     private readonly MonsterRegistry monsters;
+    private readonly IRandomSource random;
 
-    public CombatTickProcessor(PlayerAttackRequestQueue attackRequests, MonsterRegistry monsters)
+    public CombatTickProcessor(
+        PlayerAttackRequestQueue attackRequests,
+        MonsterRegistry monsters,
+        IRandomSource? random = null)
     {
         this.attackRequests = attackRequests;
         this.monsters = monsters;
+        this.random = random ?? SystemRandomSource.Shared;
     }
 
     public CombatTickResult Process(DateTimeOffset serverTime)
@@ -63,7 +68,7 @@ public sealed class CombatTickProcessor
 
         MonsterDamageResult? damageResult = monsters.ApplyDamage(
             request.MonsterId,
-            WorldRules.PlayerAttackDamage,
+            attacker.AttackPower,
             attacker.PlayerId,
             serverTime);
         if (damageResult is null)
@@ -75,16 +80,19 @@ public sealed class CombatTickProcessor
         int experienceAwarded = 0;
         int currentLevel = attacker.Level;
         bool leveledUp = false;
-        ItemDrop? itemDrop = null;
+        IReadOnlyList<ItemDrop> itemDrops = [];
         if (damageResult.IsFatal)
         {
             MonsterRewardDefinition reward = MonsterRewardCatalog.Get(damageResult.Monster.MonsterType);
             ExperienceGainResult experienceResult = attacker.AddExperience(reward.Experience);
-            attacker.AddItem(reward.Drop);
+            itemDrops = MonsterRewardCatalog.RollDrops(reward, random);
+            foreach (ItemDrop drop in itemDrops)
+            {
+                attacker.AddItem(drop);
+            }
             experienceAwarded = experienceResult.ExperienceAwarded;
             currentLevel = experienceResult.CurrentLevel;
             leveledUp = experienceResult.LeveledUp;
-            itemDrop = reward.Drop;
         }
         return PlayerAttackResult.Accepted(
             damageResult.Monster,
@@ -94,6 +102,6 @@ public sealed class CombatTickProcessor
             experienceAwarded,
             currentLevel,
             leveledUp,
-            itemDrop);
+            itemDrops);
     }
 }

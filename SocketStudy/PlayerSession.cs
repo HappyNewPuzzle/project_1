@@ -2,6 +2,7 @@
 public sealed class PlayerSession
 {
     private readonly Dictionary<string, int> inventory = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<EquipmentSlot, string> equipment = new();
     // 아직 로그인하지 않은 연결에 붙일 임시 플레이어 ID입니다.
     public const long AnonymousPlayerId = 0;
 
@@ -39,6 +40,11 @@ public sealed class PlayerSession
     public int Level => checked((int)Math.Min(int.MaxValue, Experience / WorldRules.ExperiencePerLevel + 1));
 
     public long ExperienceToNextLevel => checked((long)Level * WorldRules.ExperiencePerLevel - Experience);
+
+    public int AttackPower => WorldRules.PlayerAttackDamage + equipment.Values
+        .Select(ItemCatalog.Find)
+        .Where(item => item is not null)
+        .Sum(item => item!.AttackBonus);
 
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
@@ -209,6 +215,85 @@ public sealed class PlayerSession
         .OrderBy(item => item.ItemId, StringComparer.OrdinalIgnoreCase)
         .ToArray();
 
+    public IReadOnlyDictionary<EquipmentSlot, string> SnapshotEquipment() =>
+        new Dictionary<EquipmentSlot, string>(equipment);
+
+    public ItemActionResult Equip(string itemId)
+    {
+        ItemDefinition? item = ItemCatalog.Find(itemId);
+        if (item?.Category != ItemCategory.Equipment || item.EquipmentSlot is null)
+        {
+            return new(false, $"Item cannot be equipped: {itemId}");
+        }
+
+        if (!RemoveItem(item.ItemId, 1))
+        {
+            return new(false, $"Item not found in inventory: {itemId}");
+        }
+
+        EquipmentSlot slot = item.EquipmentSlot.Value;
+        if (equipment.Remove(slot, out string? previousItem))
+        {
+            AddItem(new ItemDrop(previousItem, 1));
+        }
+
+        equipment[slot] = item.ItemId;
+        return new(true, $"Equipped {item.ItemId} in {slot}.");
+    }
+
+    public ItemActionResult Unequip(EquipmentSlot slot)
+    {
+        if (!equipment.Remove(slot, out string? itemId))
+        {
+            return new(false, $"Nothing is equipped in {slot}.");
+        }
+
+        AddItem(new ItemDrop(itemId, 1));
+        return new(true, $"Unequipped {itemId} from {slot}.");
+    }
+
+    public ItemActionResult UseItem(string itemId)
+    {
+        ItemDefinition? item = ItemCatalog.Find(itemId);
+        if (item?.Category != ItemCategory.Consumable)
+        {
+            return new(false, $"Item cannot be used: {itemId}");
+        }
+
+        if (CurrentHealth >= MaxHealth)
+        {
+            return new(false, "Health is already full.");
+        }
+
+        if (!RemoveItem(item.ItemId, 1))
+        {
+            return new(false, $"Item not found in inventory: {itemId}");
+        }
+
+        int healed = Math.Min(item.HealAmount, MaxHealth - CurrentHealth);
+        CurrentHealth += healed;
+        return new(true, $"Used {item.ItemId}. Restored {healed} HP. Health: {CurrentHealth}/{MaxHealth}");
+    }
+
+    private bool RemoveItem(string itemId, int quantity)
+    {
+        if (!inventory.TryGetValue(itemId, out int current) || current < quantity)
+        {
+            return false;
+        }
+
+        if (current == quantity)
+        {
+            inventory.Remove(itemId);
+        }
+        else
+        {
+            inventory[itemId] = current - quantity;
+        }
+
+        return true;
+    }
+
     // 플레이어를 현재 월드에서 사라진 상태로 바꿉니다.
     public void Despawn()
     {
@@ -240,5 +325,6 @@ public sealed class PlayerSession
         LastAttackAt = null;
         Experience = 0;
         inventory.Clear();
+        equipment.Clear();
     }
 }

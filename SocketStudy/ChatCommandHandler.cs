@@ -15,6 +15,10 @@ public sealed class ChatCommandHandler
         "/experience",
         "/level",
         "/inventory",
+        "/equipment",
+        "/equip <itemId>",
+        "/unequip <Weapon|Armor>",
+        "/use <itemId>",
         "/login <playerId>",
         "/logout",
         "/pos",
@@ -323,6 +327,43 @@ public sealed class ChatCommandHandler
                 connection,
                 MessageType.Notice,
                 $"Inventory ({items.Length}): {displayItems}");
+            return true;
+        }
+
+        if (message.Text.Equals("/equipment", StringComparison.OrdinalIgnoreCase))
+        {
+            IReadOnlyDictionary<EquipmentSlot, string> equipped = connection.Session.SnapshotEquipment();
+            string display = string.Join(", ", Enum.GetValues<EquipmentSlot>().Select(slot =>
+                $"{slot}={(equipped.TryGetValue(slot, out string? item) ? item : "(empty)")}"));
+            await sendToClientAsync(connection, MessageType.Notice, $"Equipment: {display}, attack={connection.Session.AttackPower}");
+            return true;
+        }
+
+        if (message.Text.StartsWith("/equip ", StringComparison.OrdinalIgnoreCase))
+        {
+            ItemActionResult result = connection.Session.Equip(message.Text["/equip ".Length..].Trim());
+            await sendToClientAsync(connection, MessageType.Notice, result.Message);
+            return true;
+        }
+
+        if (message.Text.StartsWith("/unequip ", StringComparison.OrdinalIgnoreCase))
+        {
+            string argument = message.Text["/unequip ".Length..].Trim();
+            if (!Enum.TryParse(argument, true, out EquipmentSlot slot))
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "Usage: /unequip <Weapon|Armor>");
+                return true;
+            }
+
+            ItemActionResult result = connection.Session.Unequip(slot);
+            await sendToClientAsync(connection, MessageType.Notice, result.Message);
+            return true;
+        }
+
+        if (message.Text.StartsWith("/use ", StringComparison.OrdinalIgnoreCase))
+        {
+            ItemActionResult result = connection.Session.UseItem(message.Text["/use ".Length..].Trim());
+            await sendToClientAsync(connection, MessageType.Notice, result.Message);
             return true;
         }
 
@@ -1188,9 +1229,9 @@ public sealed class ChatCommandHandler
 
     private static string FormatMonsterDefeat(PlayerAttackResult result)
     {
-        string drop = result.ItemDrop is null
+        string drop = result.ItemDrops.Count == 0
             ? "no item"
-            : $"{result.ItemDrop.ItemId} x{result.ItemDrop.Quantity}";
+            : string.Join(", ", result.ItemDrops.Select(item => $"{item.ItemId} x{item.Quantity}"));
         string levelUp = result.LeveledUp ? $" Level up: {result.CurrentLevel}!" : string.Empty;
         return $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. +{result.ExperienceAwarded} XP, drop: {drop}.{levelUp} Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds.";
     }

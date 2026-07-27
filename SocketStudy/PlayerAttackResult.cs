@@ -10,10 +10,10 @@ public sealed record PlayerAttackResult(
     int ExperienceAwarded,
     int CurrentLevel,
     bool LeveledUp,
-    ItemDrop? ItemDrop)
+    IReadOnlyList<ItemDrop> ItemDrops)
 {
     public static PlayerAttackResult Rejected(string reason, long monsterId) =>
-        new(false, reason, monsterId, null, 0, 0, false, 0, 0, false, null);
+        new(false, reason, monsterId, null, 0, 0, false, 0, 0, false, []);
 
     public static PlayerAttackResult Accepted(
         MonsterEntity monster,
@@ -23,7 +23,7 @@ public sealed record PlayerAttackResult(
         int experienceAwarded,
         int currentLevel,
         bool leveledUp,
-        ItemDrop? itemDrop) =>
+        IReadOnlyList<ItemDrop> itemDrops) =>
         new(
             true,
             null,
@@ -35,5 +35,5 @@ public sealed record PlayerAttackResult(
             experienceAwarded,
             currentLevel,
             leveledUp,
-            itemDrop);
+            itemDrops);
 }
