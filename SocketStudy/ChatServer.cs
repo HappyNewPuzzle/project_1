@@ -13,6 +13,8 @@ sealed class ChatServer
 
     private readonly WorldTickLoop worldTickLoop;
 
+    private readonly MonsterAiTickProcessor monsterAiTickProcessor;
+
     private readonly WorldEventQueue worldEvents = new();
 
     private readonly MonsterRegistry monsters = new();
@@ -26,7 +28,11 @@ sealed class ChatServer
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
         worldTickProcessor = new WorldTickProcessor(movementRequests);
-        worldTickLoop = new WorldTickLoop(worldTickProcessor, WorldRules.WorldTickInterval);
+        monsterAiTickProcessor = new MonsterAiTickProcessor(monsters, clients.SnapshotSpawnedPlayerEntities);
+        worldTickLoop = new WorldTickLoop(
+            worldTickProcessor,
+            WorldRules.WorldTickInterval,
+            serverTime => monsterAiTickProcessor.Process(serverTime));
 
         // command handler가 필요한 서버 기능을 함수 형태로 전달합니다.
         commandHandler = new ChatCommandHandler(

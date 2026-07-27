@@ -24,6 +24,7 @@ RunWorldRulesTest();
 RunWorldGridTest();
 await RunWorldGridIndexTestAsync();
 MonsterTests.RunMonsterRegistryTest();
+MonsterTests.RunMonsterAiTickTest();
 await MonsterTests.RunMonsterCommandsTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
@@ -541,7 +542,12 @@ static async Task RunWorldTickLoopTestAsync()
 {
     var queue = new MovementRequestQueue();
     var processor = new WorldTickProcessor(queue);
-    var loop = new WorldTickLoop(processor, TimeSpan.FromMilliseconds(5));
+    var simulationTick = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var loop = new WorldTickLoop(
+        processor,
+        TimeSpan.FromMilliseconds(5),
+        _ => simulationTick.TrySetResult(true));
     using var cancellation = new CancellationTokenSource();
     Task loopTask = loop.RunAsync(cancellation.Token);
     var session = new PlayerSession();
@@ -552,8 +558,10 @@ static async Task RunWorldTickLoopTestAsync()
 
     queue.Enqueue(queuedRequest);
     MovementTickResult result = await queuedRequest.Completion.WaitAsync(TimeSpan.FromSeconds(1));
+    await simulationTick.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
-    if (!result.IsAccepted || session.Position != new WorldPosition(1, 0))
+    if (!result.IsAccepted ||
+        session.Position != new WorldPosition(1, 0))
     {
         throw new InvalidOperationException("WorldTickLoop should process queued movement on a timer tick.");
     }
@@ -2439,6 +2447,43 @@ public static void RunMonsterRegistryTest()
     if (mapMonsters.Length != 1 || mapMonsters[0] != first)
     {
         throw new InvalidOperationException("MonsterRegistry should return only monsters in the requested map.");
+    }
+}
+
+public static void RunMonsterAiTickTest()
+{
+    var registry = new MonsterRegistry();
+    var monster = new MonsterEntity(1, "slime", 1, WorldPosition.Origin);
+    registry.TrySpawn(monster);
+    PlayerEntity[] players =
+    [
+        new PlayerEntity(10, "alice", 1, new WorldPosition(5, 0), true),
+        new PlayerEntity(20, "bob", 1, new WorldPosition(2, 1), true),
+        new PlayerEntity(1, "other-map", 2, WorldPosition.Origin, true)
+    ];
+    var processor = new MonsterAiTickProcessor(registry, () => players);
+    DateTimeOffset firstTick = DateTimeOffset.UnixEpoch;
+
+    MonsterAiTickResult firstResult = processor.Process(firstTick);
+    MonsterMovement firstMovement = firstResult.Movements.Single();
+    if (firstMovement.TargetPlayerId != 20 ||
+        firstMovement.PreviousPosition != WorldPosition.Origin ||
+        firstMovement.NextPosition != new WorldPosition(1, 0))
+    {
+        throw new InvalidOperationException("Monster AI should move one step toward the nearest player in the same map.");
+    }
+
+    MonsterAiTickResult cooldownResult = processor.Process(firstTick.AddMilliseconds(100));
+    if (cooldownResult.Movements.Count != 0 ||
+        registry.SnapshotMap(1).Single().Position != new WorldPosition(1, 0))
+    {
+        throw new InvalidOperationException("Monster AI should respect the server movement interval.");
+    }
+
+    MonsterAiTickResult nextResult = processor.Process(firstTick + WorldRules.MonsterMoveInterval);
+    if (nextResult.Movements.Single().NextPosition != new WorldPosition(2, 0))
+    {
+        throw new InvalidOperationException("Monster AI should continue tracking its nearest target on a later tick.");
     }
 }
 

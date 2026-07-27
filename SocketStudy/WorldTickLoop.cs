@@ -3,12 +3,17 @@ public sealed class WorldTickLoop
 {
     private readonly WorldTickProcessor processor;
     private readonly TimeSpan interval;
+    private readonly Action<DateTimeOffset>? processSimulation;
 
-    public WorldTickLoop(WorldTickProcessor processor, TimeSpan interval)
+    public WorldTickLoop(
+        WorldTickProcessor processor,
+        TimeSpan interval,
+        Action<DateTimeOffset>? processSimulation = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(interval, TimeSpan.Zero);
         this.processor = processor;
         this.interval = interval;
+        this.processSimulation = processSimulation;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -20,6 +25,7 @@ public sealed class WorldTickLoop
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 processor.ProcessOnce();
+                processSimulation?.Invoke(DateTimeOffset.UtcNow);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

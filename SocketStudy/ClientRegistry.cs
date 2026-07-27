@@ -244,6 +244,17 @@ public sealed class ClientRegistry
         }
     }
 
+    public PlayerEntity[] SnapshotSpawnedPlayerEntities()
+    {
+        lock (gate)
+        {
+            return clients
+                .Where(client => client.Session.IsSpawned)
+                .Select(PlayerEntity.FromConnection)
+                .ToArray();
+        }
+    }
+
     // 특정 채팅방에 있는 접속자 목록의 복사본을 가져옵니다.
     public ClientConnection[] SnapshotRoom(string roomName, ClientConnection? except = null)
     {

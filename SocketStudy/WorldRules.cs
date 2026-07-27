@@ -28,6 +28,9 @@ public static class WorldRules
     // The learning server updates its world twenty times per second.
     public static readonly TimeSpan WorldTickInterval = TimeSpan.FromMilliseconds(50);
 
+    // Monsters make one movement decision twice per second.
+    public static readonly TimeSpan MonsterMoveInterval = TimeSpan.FromMilliseconds(500);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

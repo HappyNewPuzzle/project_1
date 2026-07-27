@@ -4,4 +4,5 @@ public sealed record MonsterEntity(
     string MonsterType,
     int MapId,
     WorldPosition Position,
-    bool IsSpawned = true) : WorldEntity(MonsterId, MapId, Position, IsSpawned);
+    bool IsSpawned = true,
+    DateTimeOffset? LastMovedAt = null) : WorldEntity(MonsterId, MapId, Position, IsSpawned);
