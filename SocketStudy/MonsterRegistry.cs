@@ -80,4 +80,24 @@ public sealed class MonsterRegistry
             return true;
         }
     }
+
+    public bool TryUpdate(MonsterEntity expected, MonsterEntity updated)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(updated);
+
+        lock (gate)
+        {
+            if (!monsters.TryGetValue(expected.MonsterId, out MonsterEntity? current) ||
+                current != expected ||
+                updated.MonsterId != expected.MonsterId ||
+                !WorldRules.IsInsideWorld(updated.Position))
+            {
+                return false;
+            }
+
+            monsters[expected.MonsterId] = updated;
+            return true;
+        }
+    }
 }

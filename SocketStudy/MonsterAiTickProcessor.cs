@@ -1,4 +1,4 @@
-// Chooses nearby player targets and moves monsters using server-owned state.
+// Runs the idle, chasing, and returning states for server-owned monsters.
 public sealed class MonsterAiTickProcessor
 {
     private readonly MonsterRegistry monsters;
@@ -19,40 +19,105 @@ public sealed class MonsterAiTickProcessor
 
         foreach (MonsterEntity monster in monsters.Snapshot())
         {
-            if (monster.LastMovedAt is not null &&
-                serverTime - monster.LastMovedAt.Value < WorldRules.MonsterMoveInterval)
+            MonsterEntity updated = monster;
+            PlayerEntity? target = null;
+            WorldPosition? destination = null;
+
+            switch (monster.AiState)
+            {
+                case MonsterAiState.Idle:
+                    target = FindNearestDetectedPlayer(monster, players);
+                    if (target is not null)
+                    {
+                        updated = updated with
+                        {
+                            AiState = MonsterAiState.Chasing,
+                            AggroTargetPlayerId = target.PlayerId
+                        };
+                        destination = target.Position;
+                    }
+                    break;
+
+                case MonsterAiState.Chasing:
+                    target = players.FirstOrDefault(player =>
+                        player.PlayerId == monster.AggroTargetPlayerId &&
+                        player.MapId == monster.MapId);
+
+                    if (target is null ||
+                        WorldRules.GetDistance(monster.SpawnPosition, target.Position) > WorldRules.MonsterLeashDistance)
+                    {
+                        updated = updated with
+                        {
+                            AiState = MonsterAiState.Returning,
+                            AggroTargetPlayerId = null
+                        };
+                        destination = monster.SpawnPosition;
+                    }
+                    else
+                    {
+                        destination = target.Position;
+                    }
+                    break;
+
+                case MonsterAiState.Returning:
+                    if (monster.Position == monster.SpawnPosition)
+                    {
+                        updated = updated with { AiState = MonsterAiState.Idle };
+                    }
+                    else
+                    {
+                        destination = monster.SpawnPosition;
+                    }
+                    break;
+            }
+
+            bool canMove = destination is not null &&
+                destination.Value != monster.Position &&
+                (monster.LastMovedAt is null ||
+                    serverTime - monster.LastMovedAt.Value >= WorldRules.MonsterMoveInterval);
+
+            if (canMove)
+            {
+                WorldPosition nextPosition = GetNextPosition(monster.Position, destination!.Value);
+                updated = updated with
+                {
+                    Position = nextPosition,
+                    LastMovedAt = serverTime,
+                    AiState = updated.AiState == MonsterAiState.Returning && nextPosition == monster.SpawnPosition
+                        ? MonsterAiState.Idle
+                        : updated.AiState
+                };
+            }
+
+            if (updated == monster || !monsters.TryUpdate(monster, updated))
             {
                 continue;
             }
 
-            PlayerEntity? target = players
-                .Where(player => player.MapId == monster.MapId)
-                .OrderBy(player => WorldRules.GetDistance(monster.Position, player.Position))
-                .ThenBy(player => player.PlayerId)
-                .FirstOrDefault();
-
-            if (target is null || target.Position == monster.Position)
-            {
-                continue;
-            }
-
-            WorldPosition nextPosition = GetNextPosition(monster.Position, target.Position);
-            if (monsters.TryMove(
-                monster.MonsterId,
-                monster.Position,
-                nextPosition,
-                serverTime,
-                out _))
+            if (updated.Position != monster.Position)
             {
                 movements.Add(new MonsterMovement(
                     monster.MonsterId,
-                    target.PlayerId,
+                    updated.AggroTargetPlayerId,
                     monster.Position,
-                    nextPosition));
+                    updated.Position));
             }
         }
 
         return new MonsterAiTickResult(movements);
+    }
+
+    private static PlayerEntity? FindNearestDetectedPlayer(
+        MonsterEntity monster,
+        IEnumerable<PlayerEntity> players)
+    {
+        return players
+            .Where(player =>
+                player.MapId == monster.MapId &&
+                WorldRules.GetDistance(monster.Position, player.Position) <= WorldRules.MonsterDetectionDistance)
+            .OrderBy(player => WorldRules.GetDistance(monster.Position, player.Position))
+            .ThenBy(player => player.PlayerId)
+            .FirstOrDefault();
     }
 
     private static WorldPosition GetNextPosition(WorldPosition current, WorldPosition target)

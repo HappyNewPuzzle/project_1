@@ -31,6 +31,12 @@ public static class WorldRules
     // Monsters make one movement decision twice per second.
     public static readonly TimeSpan MonsterMoveInterval = TimeSpan.FromMilliseconds(500);
 
+    // Idle monsters notice players inside this Manhattan distance.
+    public const int MonsterDetectionDistance = 10;
+
+    // Monsters stop chasing targets beyond this distance from their spawn point.
+    public const int MonsterLeashDistance = 15;
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

@@ -2468,7 +2468,8 @@ public static void RunMonsterAiTickTest()
     MonsterMovement firstMovement = firstResult.Movements.Single();
     if (firstMovement.TargetPlayerId != 20 ||
         firstMovement.PreviousPosition != WorldPosition.Origin ||
-        firstMovement.NextPosition != new WorldPosition(1, 0))
+        firstMovement.NextPosition != new WorldPosition(1, 0) ||
+        registry.SnapshotMap(1).Single().AiState != MonsterAiState.Chasing)
     {
         throw new InvalidOperationException("Monster AI should move one step toward the nearest player in the same map.");
     }
@@ -2484,6 +2485,52 @@ public static void RunMonsterAiTickTest()
     if (nextResult.Movements.Single().NextPosition != new WorldPosition(2, 0))
     {
         throw new InvalidOperationException("Monster AI should continue tracking its nearest target on a later tick.");
+    }
+
+    players =
+    [
+        new PlayerEntity(
+            20,
+            "bob",
+            1,
+            new WorldPosition(WorldRules.MonsterLeashDistance + 1, 0),
+            true)
+    ];
+    MonsterAiTickResult returningResult = processor.Process(
+        firstTick + WorldRules.MonsterMoveInterval + WorldRules.MonsterMoveInterval);
+    MonsterEntity returningMonster = registry.SnapshotMap(1).Single();
+    if (returningResult.Movements.Single().TargetPlayerId is not null ||
+        returningMonster.AiState != MonsterAiState.Returning ||
+        returningMonster.AggroTargetPlayerId is not null ||
+        returningMonster.Position != new WorldPosition(1, 0))
+    {
+        throw new InvalidOperationException("Monster AI should drop distant targets and return toward its spawn point.");
+    }
+
+    processor.Process(firstTick + TimeSpan.FromMilliseconds(1500));
+    MonsterEntity idleMonster = registry.SnapshotMap(1).Single();
+    if (idleMonster.Position != WorldPosition.Origin || idleMonster.AiState != MonsterAiState.Idle)
+    {
+        throw new InvalidOperationException("Monster AI should become idle after returning to its spawn point.");
+    }
+
+    var distantRegistry = new MonsterRegistry();
+    distantRegistry.TrySpawn(new MonsterEntity(2, "wolf", 1, WorldPosition.Origin));
+    var distantProcessor = new MonsterAiTickProcessor(
+        distantRegistry,
+        () =>
+        [
+            new PlayerEntity(
+                30,
+                "distant",
+                1,
+                new WorldPosition(WorldRules.MonsterDetectionDistance + 1, 0),
+                true)
+        ]);
+    if (distantProcessor.Process(firstTick).Movements.Count != 0 ||
+        distantRegistry.SnapshotMap(1).Single().AiState != MonsterAiState.Idle)
+    {
+        throw new InvalidOperationException("Idle monsters should ignore players outside their detection distance.");
     }
 }
 
@@ -2507,7 +2554,7 @@ public static async Task RunMonsterCommandsTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/monsters"));
 
-    if (!context.SentMessages.Last().Text.Contains("slime#10@x=3, y=4", StringComparison.Ordinal))
+    if (!context.SentMessages.Last().Text.Contains("slime#10[Idle]@x=3, y=4", StringComparison.Ordinal))
     {
         throw new InvalidOperationException("/monsters should list monsters in the player's current map.");
     }

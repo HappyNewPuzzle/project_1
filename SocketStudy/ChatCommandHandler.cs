@@ -652,7 +652,7 @@ public sealed class ChatCommandHandler
             string displayMonsters = mapMonsters.Length == 0
                 ? "(none)"
                 : string.Join(", ", mapMonsters.Select(monster =>
-                    $"{monster.MonsterType}#{monster.MonsterId}@{monster.Position}"));
+                    $"{monster.MonsterType}#{monster.MonsterId}[{monster.AiState}]@{monster.Position}"));
             await sendToClientAsync(
                 connection,
                 MessageType.Notice,

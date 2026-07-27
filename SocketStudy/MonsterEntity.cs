@@ -5,4 +5,11 @@ public sealed record MonsterEntity(
     int MapId,
     WorldPosition Position,
     bool IsSpawned = true,
-    DateTimeOffset? LastMovedAt = null) : WorldEntity(MonsterId, MapId, Position, IsSpawned);
+    DateTimeOffset? LastMovedAt = null) : WorldEntity(MonsterId, MapId, Position, IsSpawned)
+{
+    public WorldPosition SpawnPosition { get; init; } = Position;
+
+    public MonsterAiState AiState { get; init; } = MonsterAiState.Idle;
+
+    public long? AggroTargetPlayerId { get; init; }
+}
