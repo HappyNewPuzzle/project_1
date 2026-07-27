@@ -2108,3 +2108,56 @@ INSERT와 UPDATE는 SQLite transaction 안에서 실행됩니다. UPDATE 조건�
 - 기존 JSON 및 메모리 저장소도 같은 인터페이스와 version 규칙을 유지합니다.
 
 SQLite는 단일 월드 서버 학습과 로컬 개발에 적합합니다. 다음 단계에서는 자동 저장, 접속 종료 저장, 저장 실패 재시도와 dirty-state 추적을 추가할 수 있습니다.
+
+### 다음 단계 12. Dirty state와 자동 저장
+
+이번 step에서는 변경된 캐릭터만 저장하는 dirty-state 추적과 자동 저장, 로그아웃·연결 종료 저장, 일시적 실패 재시도를 추가했습니다.
+
+```text
+게임 상태 변경
+-> PlayerSession.IsDirty = true
+
+30초 autosave
+-> 인증 세션 스냅샷
+-> dirty 세션만 CharacterSaveService
+-> 성공 시 SaveVersion 증가, IsDirty=false
+```
+
+dirty로 표시되는 주요 변경:
+
+- 위치와 맵 이동
+- 스폰과 디스폰, HP 피해
+- 공격 시각
+- 경험치와 인벤토리
+- 장비 장착·해제
+- 아이템 사용
+
+`CharacterSaveService`는 플레이어 ID별 `SemaphoreSlim`을 사용해 수동 `/save`, autosave, 연결 종료 저장이 같은 캐릭터에 동시에 실행되지 않게 합니다. lock을 기다린 후 dirty를 다시 검사하므로 앞선 작업이 이미 저장했다면 중복 DB 호출을 생략합니다.
+
+재시도 정책:
+
+```text
+최대 시도: 3회
+기본 지연: 50ms
+2번째 대기: 100ms
+```
+
+일시적 저장 예외는 제한적으로 재시도하지만 `CharacterConcurrencyException`은 최신 버전을 먼저 load해야 해결되므로 즉시 Conflict로 반환합니다. 모든 재시도가 실패하면 dirty 상태를 유지해 다음 autosave나 연결 종료 저장에서 다시 시도할 수 있습니다.
+
+저장 시점:
+
+- `/save`
+- 30초 주기 autosave
+- `/logout` 직전
+- 네트워크 연결 종료 정리
+- 서버 종료 시 autosave loop의 마지막 flush
+
+공부 포인트:
+
+- 매 tick 또는 모든 명령마다 저장하지 않아 DB 쓰기 부하를 줄입니다.
+- 저장 성공 후에만 dirty를 해제하므로 실패한 변경이 저장된 것으로 오인되지 않습니다.
+- 플레이어별 직렬화는 같은 캐릭터의 version 경쟁을 줄이고 다른 캐릭터 저장은 병렬 진행할 수 있게 합니다.
+- 로그아웃 저장이 실패하면 세션 초기화를 중단해 메모리 상태를 보존합니다.
+- 자동 저장 테스트는 timer를 기다리지 않고 `SaveAllAsync`를 직접 호출해 결정적으로 검증합니다.
+
+다음 단계에서는 graceful shutdown에서 모든 클라이언트 처리 작업을 추적하고 저장 완료 후 서버를 종료하는 구조가 적합합니다.

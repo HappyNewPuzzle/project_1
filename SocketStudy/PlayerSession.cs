@@ -37,6 +37,7 @@ public sealed class PlayerSession
 
     public long Experience { get; private set; }
     public long SaveVersion { get; private set; }
+    public bool IsDirty { get; private set; }
 
     public int Level => checked((int)Math.Min(int.MaxValue, Experience / WorldRules.ExperiencePerLevel + 1));
 
@@ -92,6 +93,7 @@ public sealed class PlayerSession
 
         // 세션에 플레이어 ID를 저장합니다.
         PlayerId = playerId;
+        IsDirty = true;
     }
 
     // 플레이어의 현재 위치를 변경합니다.
@@ -99,6 +101,7 @@ public sealed class PlayerSession
     {
         // 새 위치를 세션에 저장합니다.
         Position = position;
+        MarkDirty();
     }
 
     // 새 이동 순서 번호가 마지막 승인 번호보다 큰지 확인합니다.
@@ -124,6 +127,7 @@ public sealed class PlayerSession
         LastMoveAt = movedAt;
         // 중복 이동 검증에 사용할 순서 번호를 저장합니다.
         LastMoveSequence = sequence;
+        MarkDirty();
     }
 
     // 스폰 전에 플레이어가 입장할 게임 맵을 변경합니다.
@@ -149,6 +153,7 @@ public sealed class PlayerSession
         LastMoveAt = null;
         // 새 맵에서는 이동 순서 번호를 처음부터 다시 시작합니다.
         LastMoveSequence = 0;
+        MarkDirty();
     }
 
     // 플레이어를 현재 위치에 스폰된 상태로 바꿉니다.
@@ -160,6 +165,7 @@ public sealed class PlayerSession
         }
         // 월드에 등장한 상태로 표시합니다.
         IsSpawned = true;
+        MarkDirty();
     }
 
     public PlayerDamageResult ApplyDamage(int damage)
@@ -183,6 +189,7 @@ public sealed class PlayerSession
             IsSpawned = false;
         }
 
+        MarkDirty();
         return new PlayerDamageResult(appliedDamage, CurrentHealth, isFatal);
     }
 
@@ -192,6 +199,7 @@ public sealed class PlayerSession
     public void RecordAttack(DateTimeOffset serverTime)
     {
         LastAttackAt = serverTime;
+        MarkDirty();
     }
 
     public ExperienceGainResult AddExperience(int amount)
@@ -203,6 +211,7 @@ public sealed class PlayerSession
 
         int previousLevel = Level;
         Experience = checked(Experience + amount);
+        MarkDirty();
         return new ExperienceGainResult(amount, Experience, previousLevel, Level);
     }
 
@@ -216,6 +225,7 @@ public sealed class PlayerSession
 
         inventory.TryGetValue(drop.ItemId, out int currentQuantity);
         inventory[drop.ItemId] = checked(currentQuantity + drop.Quantity);
+        MarkDirty();
     }
 
     public ItemStack[] SnapshotInventory() => inventory
@@ -259,6 +269,7 @@ public sealed class PlayerSession
         CurrentHealth = Math.Clamp(data.CurrentHealth, 0, MaxHealth);
         Experience = data.Experience;
         SaveVersion = data.Version;
+        IsDirty = false;
         LastMoveAt = null;
         LastMoveSequence = 0;
         LastAttackAt = null;
@@ -280,6 +291,8 @@ public sealed class PlayerSession
 
             equipment[slot] = itemId;
         }
+
+        IsDirty = false;
     }
 
     public void MarkSaved(long version)
@@ -290,6 +303,7 @@ public sealed class PlayerSession
         }
 
         SaveVersion = version;
+        IsDirty = false;
     }
 
     public IReadOnlyDictionary<EquipmentSlot, string> SnapshotEquipment() =>
@@ -315,6 +329,7 @@ public sealed class PlayerSession
         }
 
         equipment[slot] = item.ItemId;
+        MarkDirty();
         return new(true, $"Equipped {item.ItemId} in {slot}.");
     }
 
@@ -326,6 +341,7 @@ public sealed class PlayerSession
         }
 
         AddItem(new ItemDrop(itemId, 1));
+        MarkDirty();
         return new(true, $"Unequipped {itemId} from {slot}.");
     }
 
@@ -349,6 +365,7 @@ public sealed class PlayerSession
 
         int healed = Math.Min(item.HealAmount, MaxHealth - CurrentHealth);
         CurrentHealth += healed;
+        MarkDirty();
         return new(true, $"Used {item.ItemId}. Restored {healed} HP. Health: {CurrentHealth}/{MaxHealth}");
     }
 
@@ -376,6 +393,7 @@ public sealed class PlayerSession
     {
         // 월드에 등장하지 않은 상태로 표시합니다.
         IsSpawned = false;
+        MarkDirty();
     }
 
     // 인증된 플레이어 정보를 세션에서 제거합니다.
@@ -404,5 +422,14 @@ public sealed class PlayerSession
         SaveVersion = 0;
         inventory.Clear();
         equipment.Clear();
+        IsDirty = false;
+    }
+
+    private void MarkDirty()
+    {
+        if (IsAuthenticated)
+        {
+            IsDirty = true;
+        }
     }
 }

@@ -252,6 +252,17 @@ public sealed class ClientRegistry
         }
     }
 
+    public PlayerSession[] SnapshotAuthenticatedSessions()
+    {
+        lock (gate)
+        {
+            return clients
+                .Where(client => client.Session.IsAuthenticated)
+                .Select(client => client.Session)
+                .ToArray();
+        }
+    }
+
     public PlayerEntity[] SnapshotSpawnedPlayerEntities()
     {
         lock (gate)

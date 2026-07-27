@@ -2439,6 +2439,37 @@ sealed class FixedRandomSource : IRandomSource
     public double NextDouble() => value;
 }
 
+sealed class FlakyCharacterRepository : ICharacterRepository
+{
+    private readonly InMemoryCharacterRepository inner = new();
+    private int remainingFailures;
+
+    public FlakyCharacterRepository(int failureCount)
+    {
+        remainingFailures = failureCount;
+    }
+
+    public int SaveCalls { get; private set; }
+
+    public Task<CharacterSaveData> SaveAsync(
+        CharacterSaveData character,
+        CancellationToken cancellationToken = default)
+    {
+        SaveCalls++;
+        if (remainingFailures-- > 0)
+        {
+            throw new IOException("Transient save failure.");
+        }
+
+        return inner.SaveAsync(character, cancellationToken);
+    }
+
+    public Task<CharacterSaveData?> LoadAsync(
+        long playerId,
+        CancellationToken cancellationToken = default) =>
+        inner.LoadAsync(playerId, cancellationToken);
+}
+
 static class MonsterTests
 {
 public static void RunMonsterRegistryTest()
@@ -3005,6 +3036,34 @@ public static async Task RunCharacterPersistenceTestAsync()
     {
         throw new InvalidOperationException("/save and /load should round-trip the authenticated character.");
     }
+
+    var flakyRepository = new FlakyCharacterRepository(failureCount: 2);
+    var saveService = new CharacterSaveService(flakyRepository);
+    var dirtySession = new PlayerSession();
+    dirtySession.Authenticate(902);
+    dirtySession.MoveTo(new WorldPosition(2, 3));
+    CharacterSaveOutcome retried = await saveService.SaveIfDirtyAsync(dirtySession);
+    if (retried.Status != CharacterSaveStatus.Saved ||
+        retried.Attempts != 3 ||
+        dirtySession.IsDirty ||
+        flakyRepository.SaveCalls != 3)
+    {
+        throw new InvalidOperationException("Character save service should retry transient failures and clear dirty state.");
+    }
+
+    CharacterSaveOutcome clean = await saveService.SaveIfDirtyAsync(dirtySession);
+    if (clean.Status != CharacterSaveStatus.NotDirty || flakyRepository.SaveCalls != 3)
+    {
+        throw new InvalidOperationException("Clean sessions should skip redundant repository saves.");
+    }
+
+    dirtySession.MoveTo(new WorldPosition(3, 4));
+    var autosave = new CharacterAutosaveLoop(() => [dirtySession], saveService, TimeSpan.FromSeconds(1));
+    await autosave.SaveAllAsync(CancellationToken.None);
+    if (dirtySession.IsDirty || dirtySession.SaveVersion != 2)
+    {
+        throw new InvalidOperationException("Autosave should persist dirty authenticated sessions.");
+    }
 }
 }
 
@@ -3053,6 +3112,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
         MovementRequestQueue movementRequests = CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor);
         var attackRequests = new PlayerAttackRequestQueue();
         var combatTickProcessor = new CombatTickProcessor(attackRequests, Monsters, GroundLoot);
+        var characterSaves = new CharacterSaveService(Characters);
         worldTickTask = new WorldTickLoop(
             worldTickProcessor,
             TimeSpan.FromMilliseconds(1),
@@ -3081,7 +3141,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             _ => { },
             Monsters,
             GroundLoot,
-            Characters);
+            Characters,
+            characterSaves);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

@@ -63,6 +63,12 @@ public static class WorldRules
 
     public static readonly TimeSpan LootLifetime = TimeSpan.FromSeconds(30);
 
+    public static readonly TimeSpan CharacterAutosaveInterval = TimeSpan.FromSeconds(30);
+
+    public const int CharacterSaveMaxAttempts = 3;
+
+    public static readonly TimeSpan CharacterSaveRetryDelay = TimeSpan.FromMilliseconds(50);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

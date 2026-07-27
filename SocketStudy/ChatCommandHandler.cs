@@ -145,6 +145,7 @@ public sealed class ChatCommandHandler
     private readonly MonsterRegistry monsters;
     private readonly GroundLootRegistry groundLoot;
     private readonly ICharacterRepository characters;
+    private readonly CharacterSaveService characterSaves;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -169,7 +170,8 @@ public sealed class ChatCommandHandler
         Action<ClientConnection> refreshWorldIndex,
         MonsterRegistry monsters,
         GroundLootRegistry groundLoot,
-        ICharacterRepository characters)
+        ICharacterRepository characters,
+        CharacterSaveService characterSaves)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -208,6 +210,7 @@ public sealed class ChatCommandHandler
         this.monsters = monsters;
         this.groundLoot = groundLoot;
         this.characters = characters;
+        this.characterSaves = characterSaves;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -348,21 +351,28 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            try
+            CharacterSaveOutcome save = await characterSaves.SaveIfDirtyAsync(connection.Session);
+            if (save.Status == CharacterSaveStatus.Saved)
             {
-                CharacterSaveData saved = await characters.SaveAsync(connection.Session.CreateSaveData());
-                connection.Session.MarkSaved(saved.Version);
                 await sendToClientAsync(
                     connection,
                     MessageType.Notice,
-                    $"Character {connection.Session.PlayerId} saved at version {saved.Version}.");
+                    $"Character {connection.Session.PlayerId} saved at version {save.Version}.");
             }
-            catch (CharacterConcurrencyException)
+            else if (save.Status == CharacterSaveStatus.NotDirty)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "Character has no unsaved changes.");
+            }
+            else if (save.Status == CharacterSaveStatus.Conflict)
             {
                 await sendToClientAsync(
                     connection,
                     MessageType.Notice,
                     "Character save conflict. Load the latest version before saving again.");
+            }
+            else
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "Character save failed after retries.");
             }
             return true;
         }
@@ -522,6 +532,13 @@ public sealed class ChatCommandHandler
                 // 보낸 사람에게만 현재 로그인 상태가 아니라고 알려줍니다.
                 await sendToClientAsync(connection, MessageType.Notice, "You are not logged in.");
                 // 명령을 처리했다고 호출자에게 알려줍니다.
+                return true;
+            }
+
+            CharacterSaveOutcome logoutSave = await characterSaves.SaveIfDirtyAsync(connection.Session);
+            if (logoutSave.Status is CharacterSaveStatus.Conflict or CharacterSaveStatus.Failed)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "Logout canceled because character save failed.");
                 return true;
             }
 

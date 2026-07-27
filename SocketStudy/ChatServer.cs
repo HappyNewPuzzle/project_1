@@ -29,6 +29,8 @@ sealed class ChatServer
     private readonly GroundLootRegistry groundLoot = new();
     private readonly ICharacterRepository characters = new SqliteCharacterRepository(
         Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
+    private readonly CharacterSaveService characterSaves;
+    private readonly CharacterAutosaveLoop characterAutosaveLoop;
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -38,6 +40,11 @@ sealed class ChatServer
     {
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
+        characterSaves = new CharacterSaveService(characters);
+        characterAutosaveLoop = new CharacterAutosaveLoop(
+            clients.SnapshotAuthenticatedSessions,
+            characterSaves,
+            WorldRules.CharacterAutosaveInterval);
         worldTickProcessor = new WorldTickProcessor(movementRequests);
         monsterAiTickProcessor = new MonsterAiTickProcessor(
             monsters,
@@ -87,7 +94,8 @@ sealed class ChatServer
             clients.RefreshWorldIndex,
             monsters,
             groundLoot,
-            characters);
+            characters,
+            characterSaves);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
@@ -98,6 +106,7 @@ sealed class ChatServer
         using var worldTickCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task worldTickTask = worldTickLoop.RunAsync(worldTickCancellation.Token);
         Task combatEventTask = combatEventDispatchLoop.RunAsync(worldTickCancellation.Token);
+        Task autosaveTask = characterAutosaveLoop.RunAsync(worldTickCancellation.Token);
 
         // 서버 종료 시 listener를 반드시 닫기 위해 try/finally를 사용합니다.
         try
@@ -138,6 +147,7 @@ sealed class ChatServer
             worldTickCancellation.Cancel();
             await worldTickTask;
             await combatEventTask;
+            await autosaveTask;
             // 서버 종료 완료를 콘솔에 출력합니다.
             AppLogger.Info("[server] Server stopped.");
         }
@@ -216,6 +226,13 @@ sealed class ChatServer
         // 성공/실패와 관계없이 마지막 정리 작업을 수행합니다.
         finally
         {
+            CharacterSaveOutcome disconnectSave = await characterSaves.SaveIfDirtyAsync(
+                connection.Session,
+                CancellationToken.None);
+            if (disconnectSave.Status is CharacterSaveStatus.Conflict or CharacterSaveStatus.Failed)
+            {
+                AppLogger.Error($"[server] Failed to save player {connection.Session.PlayerId} during disconnect.");
+            }
             // 현재 클라이언트를 서버의 접속자 목록에서 제거합니다.
             RemoveClient(connection);
             // 클라이언트 소켓을 닫아서 운영체제 리소스를 반납합니다.
