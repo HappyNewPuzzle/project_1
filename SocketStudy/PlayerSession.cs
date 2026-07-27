@@ -31,6 +31,8 @@ public sealed class PlayerSession
 
     public bool IsAlive => CurrentHealth > 0;
 
+    public DateTimeOffset? LastAttackAt { get; private set; }
+
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
     {
@@ -47,6 +49,7 @@ public sealed class PlayerSession
         // 처음에는 아직 월드에 스폰되지 않았습니다.
         IsSpawned = false;
         CurrentHealth = MaxHealth;
+        LastAttackAt = null;
     }
 
     // 로그인 성공 후 플레이어 ID를 세션에 연결합니다.
@@ -161,6 +164,14 @@ public sealed class PlayerSession
         return new PlayerDamageResult(appliedDamage, CurrentHealth, isFatal);
     }
 
+    public bool IsAttackCooldownElapsed(DateTimeOffset serverTime) =>
+        LastAttackAt is null || serverTime - LastAttackAt.Value >= WorldRules.PlayerAttackInterval;
+
+    public void RecordAttack(DateTimeOffset serverTime)
+    {
+        LastAttackAt = serverTime;
+    }
+
     // 플레이어를 현재 월드에서 사라진 상태로 바꿉니다.
     public void Despawn()
     {
@@ -189,5 +200,6 @@ public sealed class PlayerSession
         // 다음 로그인에 이전 이동 순서가 이어지지 않도록 초기화합니다.
         LastMoveSequence = 0;
         CurrentHealth = MaxHealth;
+        LastAttackAt = null;
     }
 }

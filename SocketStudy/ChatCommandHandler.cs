@@ -25,6 +25,7 @@ public sealed class ChatCommandHandler
         "/despawn",
         "/spawn-monster <id> <type> <x> <y>",
         "/monsters",
+        "/attack <monsterId>",
         "/users",
         "/rooms",
         "/room-users",
@@ -75,6 +76,8 @@ public sealed class ChatCommandHandler
 
     private const string SpawnMonsterUsage = "Usage: /spawn-monster <id> <type> <x> <y>";
 
+    private const string AttackUsage = "Usage: /attack <monsterId>";
+
     // 클라이언트 한 명에게 메시지를 보내는 함수입니다.
     private readonly Func<ClientConnection, MessageType, string, Task> sendToClientAsync;
 
@@ -122,6 +125,8 @@ public sealed class ChatCommandHandler
 
     private readonly MovementRequestQueue movementRequests;
 
+    private readonly PlayerAttackRequestQueue attackRequests;
+
     private readonly WorldEventQueue worldEvents;
 
     private readonly Action<ClientConnection> refreshWorldIndex;
@@ -146,6 +151,7 @@ public sealed class ChatCommandHandler
         Func<DateTimeOffset> getCurrentTime,
         Func<DateTimeOffset> getServerStartedAt,
         MovementRequestQueue movementRequests,
+        PlayerAttackRequestQueue attackRequests,
         WorldEventQueue worldEvents,
         Action<ClientConnection> refreshWorldIndex,
         MonsterRegistry monsters)
@@ -181,6 +187,7 @@ public sealed class ChatCommandHandler
         // 서버 시작 시각 조회 함수를 저장합니다.
         this.getServerStartedAt = getServerStartedAt;
         this.movementRequests = movementRequests;
+        this.attackRequests = attackRequests;
         this.worldEvents = worldEvents;
         this.refreshWorldIndex = refreshWorldIndex;
         this.monsters = monsters;
@@ -668,6 +675,41 @@ public sealed class ChatCommandHandler
                 connection,
                 MessageType.Notice,
                 $"Monsters in map {connection.Session.MapId} ({mapMonsters.Length}): {displayMonsters}");
+            return true;
+        }
+
+        if (message.Text.StartsWith("/attack ", StringComparison.OrdinalIgnoreCase))
+        {
+            string argument = message.Text["/attack ".Length..].Trim();
+            if (!long.TryParse(argument, out long monsterId) || monsterId <= 0)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, AttackUsage);
+                return true;
+            }
+
+            var queuedAttack = new QueuedPlayerAttackRequest(
+                new PlayerAttackRequest(connection.Session, monsterId));
+            attackRequests.Enqueue(queuedAttack);
+            PlayerAttackResult result = await queuedAttack.Completion;
+
+            if (!result.IsAccepted)
+            {
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    result.RejectionReason ?? "Attack rejected.");
+                return true;
+            }
+
+            string outcome = result.IsFatal
+                ? $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds."
+                : $"Attacked {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. HP: {result.RemainingHealth}/{WorldRules.MonsterMaxHealth}";
+            await sendToClientAsync(connection, MessageType.Notice, outcome);
+            return true;
+        }
+
+        if (await SendUsageIfExactCommandAsync(connection, message.Text, "/attack", AttackUsage))
+        {
             return true;
         }
 

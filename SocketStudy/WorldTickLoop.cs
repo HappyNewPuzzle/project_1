@@ -36,6 +36,7 @@ public sealed class WorldTickLoop
         {
             // Complete input already accepted before shutdown so callers do not wait forever.
             processor.ProcessOnce();
+            processSimulation?.Invoke(DateTimeOffset.UtcNow);
         }
     }
 }

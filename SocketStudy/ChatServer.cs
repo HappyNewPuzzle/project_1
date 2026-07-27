@@ -15,6 +15,10 @@ sealed class ChatServer
 
     private readonly MonsterAiTickProcessor monsterAiTickProcessor;
 
+    private readonly PlayerAttackRequestQueue attackRequests = new();
+
+    private readonly CombatTickProcessor combatTickProcessor;
+
     private readonly WorldEventQueue worldEvents = new();
 
     private readonly MonsterRegistry monsters = new();
@@ -32,10 +36,15 @@ sealed class ChatServer
             monsters,
             clients.SnapshotSpawnedPlayerEntities,
             clients.ApplyDamage);
+        combatTickProcessor = new CombatTickProcessor(attackRequests, monsters);
         worldTickLoop = new WorldTickLoop(
             worldTickProcessor,
             WorldRules.WorldTickInterval,
-            serverTime => monsterAiTickProcessor.Process(serverTime));
+            serverTime =>
+            {
+                combatTickProcessor.Process(serverTime);
+                monsterAiTickProcessor.Process(serverTime);
+            });
 
         // command handler가 필요한 서버 기능을 함수 형태로 전달합니다.
         commandHandler = new ChatCommandHandler(
@@ -55,6 +64,7 @@ sealed class ChatServer
             () => DateTimeOffset.Now,
             () => serverStartedAt,
             movementRequests,
+            attackRequests,
             worldEvents,
             clients.RefreshWorldIndex,
             monsters);

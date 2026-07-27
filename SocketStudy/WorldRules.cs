@@ -47,6 +47,14 @@ public static class WorldRules
 
     public static readonly TimeSpan MonsterAttackInterval = TimeSpan.FromSeconds(1);
 
+    public const int PlayerAttackDamage = 20;
+
+    public const int PlayerAttackRange = 2;
+
+    public static readonly TimeSpan PlayerAttackInterval = TimeSpan.FromMilliseconds(500);
+
+    public static readonly TimeSpan MonsterRespawnDelay = TimeSpan.FromSeconds(5);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

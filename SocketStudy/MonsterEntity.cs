@@ -18,4 +18,6 @@ public sealed record MonsterEntity(
     public int CurrentHealth { get; init; } = WorldRules.MonsterMaxHealth;
 
     public DateTimeOffset? LastAttackedAt { get; init; }
+
+    public DateTimeOffset? RespawnAt { get; init; }
 }

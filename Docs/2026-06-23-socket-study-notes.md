@@ -1815,3 +1815,42 @@ MonsterAiTickProcessor
 - 다시 `/spawn`하면 학습용 규칙에 따라 HP가 최대치로 회복됩니다.
 
 현재는 몬스터가 플레이어만 공격합니다. 다음 단계에서는 플레이어 공격 명령, 몬스터 피해·사망·리스폰을 추가할 수 있습니다.
+
+### 다음 단계 5. 플레이어 공격과 몬스터 리스폰
+
+이번 step에서는 `/attack <monsterId>` 명령과 `CombatTickProcessor`를 추가했습니다. 네트워크 작업은 공격 요청을 큐에 넣고, 월드 tick이 서버 시각을 기준으로 검증한 결과를 기다립니다.
+
+플레이어 공격 규칙:
+
+```text
+공격력: 20
+공격 거리: 맨해튼 거리 2
+공격 쿨다운: 500ms
+몬스터 리스폰: 사망 5초 후
+```
+
+처리 흐름:
+
+```text
+/attack 10
+-> PlayerAttackRequestQueue
+-> CombatTickProcessor
+   -> 플레이어 생존·스폰 검사
+   -> 몬스터 생존·맵·거리 검사
+   -> 서버 공격 쿨다운 검사
+   -> MonsterRegistry.ApplyDamage(...)
+   -> PlayerAttackResult 완료
+-> 클라이언트 결과 응답
+```
+
+몬스터 HP가 0이 되면 `IsSpawned=false`와 `RespawnAt`이 저장됩니다. 매 combat tick의 시작에서 `RespawnReady`가 만료된 몬스터를 찾아 스폰 위치, 최대 HP, `Idle` 상태로 복원합니다.
+
+공부 포인트:
+
+- 공격 패킷도 이동 패킷처럼 월드 tick 경계에서 처리됩니다.
+- 요청에 담긴 시간이 아니라 combat tick의 서버 시각으로 쿨다운과 사망 시각을 판정합니다.
+- 치명타 피해는 남은 HP까지만 적용되므로 HP가 음수가 되지 않습니다.
+- 죽은 몬스터는 AI 스냅샷과 `/monsters` 목록에서 제외되어 이동하거나 공격할 수 없습니다.
+- 리스폰은 별도 타이머를 몬스터마다 만들지 않고 월드 tick이 `RespawnAt`을 비교하는 방식입니다.
+
+다음 단계에서는 전투 이벤트를 AOI 플레이어에게 전파하고 경험치와 보상 소유권을 추가할 수 있습니다.

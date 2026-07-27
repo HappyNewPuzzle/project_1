@@ -25,6 +25,7 @@ RunWorldGridTest();
 await RunWorldGridIndexTestAsync();
 MonsterTests.RunMonsterRegistryTest();
 MonsterTests.RunMonsterAiTickTest();
+await MonsterTests.RunPlayerCombatTickTestAsync();
 await MonsterTests.RunMonsterCommandsTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
@@ -2591,6 +2592,67 @@ private static void RunMonsterCombatTest()
     }
 }
 
+public static async Task RunPlayerCombatTickTestAsync()
+{
+    var monsters = new MonsterRegistry();
+    monsters.TrySpawn(new MonsterEntity(70, "skeleton", 1, new WorldPosition(1, 0)));
+    var attacker = new PlayerSession();
+    attacker.Authenticate(700);
+    attacker.Spawn();
+    var queue = new PlayerAttackRequestQueue();
+    var processor = new CombatTickProcessor(queue, monsters);
+    DateTimeOffset start = DateTimeOffset.UnixEpoch;
+
+    async Task<PlayerAttackResult> AttackAtAsync(DateTimeOffset serverTime)
+    {
+        var queued = new QueuedPlayerAttackRequest(
+            new PlayerAttackRequest(attacker, 70));
+        queue.Enqueue(queued);
+        processor.Process(serverTime);
+        return await queued.Completion;
+    }
+
+    PlayerAttackResult first = await AttackAtAsync(start);
+    if (!first.IsAccepted || first.Damage != WorldRules.PlayerAttackDamage || first.RemainingHealth != 30)
+    {
+        throw new InvalidOperationException("Combat tick should apply an accepted player attack to the monster.");
+    }
+
+    PlayerAttackResult cooldown = await AttackAtAsync(start.AddMilliseconds(100));
+    if (cooldown.IsAccepted || monsters.Find(70)?.CurrentHealth != 30)
+    {
+        throw new InvalidOperationException("Combat tick should reject attacks during the player cooldown.");
+    }
+
+    PlayerAttackResult second = await AttackAtAsync(start + WorldRules.PlayerAttackInterval);
+    PlayerAttackResult fatal = await AttackAtAsync(start + WorldRules.PlayerAttackInterval + WorldRules.PlayerAttackInterval);
+    if (!second.IsAccepted || !fatal.IsFatal || fatal.Damage != 10 || monsters.Find(70)?.IsSpawned != false)
+    {
+        throw new InvalidOperationException("Fatal player damage should despawn the monster and clamp applied damage.");
+    }
+
+    PlayerAttackResult deadTarget = await AttackAtAsync(start + TimeSpan.FromSeconds(2));
+    if (deadTarget.IsAccepted)
+    {
+        throw new InvalidOperationException("Combat tick should reject attacks against dead monsters.");
+    }
+
+    if (processor.Process(start + WorldRules.MonsterRespawnDelay - TimeSpan.FromMilliseconds(1)).RespawnedMonsters.Count != 0)
+    {
+        throw new InvalidOperationException("Monster should not respawn before its server respawn time.");
+    }
+
+    CombatTickResult respawnTick = processor.Process(
+        start + WorldRules.PlayerAttackInterval + WorldRules.PlayerAttackInterval + WorldRules.MonsterRespawnDelay);
+    MonsterEntity respawned = respawnTick.RespawnedMonsters.Single();
+    if (!respawned.IsSpawned ||
+        respawned.CurrentHealth != respawned.MaxHealth ||
+        respawned.Position != respawned.SpawnPosition)
+    {
+        throw new InvalidOperationException("Monster should respawn at full health and its original spawn position.");
+    }
+}
+
 public static async Task RunMonsterCommandsTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -2631,6 +2693,15 @@ public static async Task RunMonsterCommandsTestAsync()
     if (context.SentMessages.Last().Text != "Health: 100/100, state=alive")
     {
         throw new InvalidOperationException("/health should show the authoritative player health state.");
+    }
+
+    context.Connection.Session.MoveTo(new WorldPosition(3, 3));
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/attack 10"));
+    if (context.SentMessages.Last().Text != "Attacked slime#10 for 20 damage. HP: 30/50")
+    {
+        throw new InvalidOperationException("/attack should return the world-tick combat result.");
     }
 }
 }
@@ -2674,7 +2745,12 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
         TargetConnection = new ClientConnection("bob", pair.Server, pair.ServerStream);
 
         MovementRequestQueue movementRequests = CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor);
-        worldTickTask = new WorldTickLoop(worldTickProcessor, TimeSpan.FromMilliseconds(1))
+        var attackRequests = new PlayerAttackRequestQueue();
+        var combatTickProcessor = new CombatTickProcessor(attackRequests, Monsters);
+        worldTickTask = new WorldTickLoop(
+            worldTickProcessor,
+            TimeSpan.FromMilliseconds(1),
+            serverTime => combatTickProcessor.Process(serverTime))
             .RunAsync(worldTickCancellation.Token);
 
         Handler = new ChatCommandHandler(
@@ -2694,6 +2770,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             () => CurrentTime,
             () => ServerStartedAt,
             movementRequests,
+            attackRequests,
             new WorldEventQueue(),
             _ => { },
             Monsters);

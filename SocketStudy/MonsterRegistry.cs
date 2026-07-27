@@ -53,6 +53,79 @@ public sealed class MonsterRegistry
         }
     }
 
+    public MonsterEntity? Find(long monsterId)
+    {
+        lock (gate)
+        {
+            return monsters.GetValueOrDefault(monsterId);
+        }
+    }
+
+    public MonsterDamageResult? ApplyDamage(long monsterId, int damage, DateTimeOffset serverTime)
+    {
+        if (damage <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(damage), "Damage must be positive.");
+        }
+
+        lock (gate)
+        {
+            if (!monsters.TryGetValue(monsterId, out MonsterEntity? current) || !current.IsSpawned)
+            {
+                return null;
+            }
+
+            int appliedDamage = Math.Min(damage, current.CurrentHealth);
+            int remainingHealth = current.CurrentHealth - appliedDamage;
+            bool isFatal = remainingHealth == 0;
+            MonsterEntity updated = current with
+            {
+                CurrentHealth = remainingHealth,
+                IsSpawned = !isFatal,
+                AiState = isFatal ? MonsterAiState.Idle : current.AiState,
+                AggroTargetPlayerId = isFatal ? null : current.AggroTargetPlayerId,
+                RespawnAt = isFatal ? serverTime + WorldRules.MonsterRespawnDelay : null
+            };
+            monsters[monsterId] = updated;
+            return new MonsterDamageResult(updated, appliedDamage, remainingHealth, isFatal);
+        }
+    }
+
+    public MonsterEntity[] RespawnReady(DateTimeOffset serverTime)
+    {
+        lock (gate)
+        {
+            MonsterEntity[] ready = monsters.Values
+                .Where(monster =>
+                    !monster.IsSpawned &&
+                    monster.RespawnAt is not null &&
+                    monster.RespawnAt.Value <= serverTime)
+                .ToArray();
+
+            var respawned = new List<MonsterEntity>(ready.Length);
+            foreach (MonsterEntity monster in ready)
+            {
+                MonsterEntity updated = monster with
+                {
+                    Position = monster.SpawnPosition,
+                    IsSpawned = true,
+                    CurrentHealth = monster.MaxHealth,
+                    AiState = MonsterAiState.Idle,
+                    AggroTargetPlayerId = null,
+                    LastMovedAt = null,
+                    LastAttackedAt = null,
+                    RespawnAt = null
+                };
+                monsters[monster.MonsterId] = updated;
+                respawned.Add(updated);
+            }
+
+            return respawned
+                .OrderBy(monster => monster.MonsterId)
+                .ToArray();
+        }
+    }
+
     public bool TryMove(
         long monsterId,
         WorldPosition expectedPosition,
