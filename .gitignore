@@ -16,3 +16,6 @@ TestResults/
 
 Data/*.json
 Data/*.tmp
+Data/*.db
+Data/*.db-shm
+Data/*.db-wal

@@ -2,11 +2,18 @@ public sealed class InMemoryCharacterRepository : ICharacterRepository
 {
     private readonly Dictionary<long, CharacterSaveData> characters = new();
 
-    public Task SaveAsync(CharacterSaveData character, CancellationToken cancellationToken = default)
+    public Task<CharacterSaveData> SaveAsync(CharacterSaveData character, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        characters[character.PlayerId] = character;
-        return Task.CompletedTask;
+        CharacterSaveData? current = characters.GetValueOrDefault(character.PlayerId);
+        if ((current?.Version ?? 0) != character.Version)
+        {
+            throw new CharacterConcurrencyException(character.PlayerId);
+        }
+
+        CharacterSaveData saved = character with { Version = character.Version + 1 };
+        characters[character.PlayerId] = saved;
+        return Task.FromResult(saved);
     }
 
     public Task<CharacterSaveData?> LoadAsync(long playerId, CancellationToken cancellationToken = default)

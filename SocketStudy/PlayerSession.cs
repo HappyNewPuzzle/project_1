@@ -36,6 +36,7 @@ public sealed class PlayerSession
     public DateTimeOffset? LastAttackAt { get; private set; }
 
     public long Experience { get; private set; }
+    public long SaveVersion { get; private set; }
 
     public int Level => checked((int)Math.Min(int.MaxValue, Experience / WorldRules.ExperiencePerLevel + 1));
 
@@ -69,6 +70,7 @@ public sealed class PlayerSession
         CurrentHealth = MaxHealth;
         LastAttackAt = null;
         Experience = 0;
+        SaveVersion = 0;
     }
 
     // 로그인 성공 후 플레이어 ID를 세션에 연결합니다.
@@ -235,7 +237,8 @@ public sealed class PlayerSession
             CurrentHealth,
             Experience,
             SnapshotInventory(),
-            equipment.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value));
+            equipment.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
+            SaveVersion);
     }
 
     public void Restore(CharacterSaveData data)
@@ -255,6 +258,7 @@ public sealed class PlayerSession
         Position = data.Position;
         CurrentHealth = Math.Clamp(data.CurrentHealth, 0, MaxHealth);
         Experience = data.Experience;
+        SaveVersion = data.Version;
         LastMoveAt = null;
         LastMoveSequence = 0;
         LastAttackAt = null;
@@ -276,6 +280,16 @@ public sealed class PlayerSession
 
             equipment[slot] = itemId;
         }
+    }
+
+    public void MarkSaved(long version)
+    {
+        if (version <= SaveVersion)
+        {
+            throw new ArgumentOutOfRangeException(nameof(version), "Save version must increase.");
+        }
+
+        SaveVersion = version;
     }
 
     public IReadOnlyDictionary<EquipmentSlot, string> SnapshotEquipment() =>
@@ -387,6 +401,7 @@ public sealed class PlayerSession
         CurrentHealth = MaxHealth;
         LastAttackAt = null;
         Experience = 0;
+        SaveVersion = 0;
         inventory.Clear();
         equipment.Clear();
     }

@@ -2062,3 +2062,49 @@ JSON 저장소는 전체 상태를 `.tmp` 파일에 먼저 기록한 뒤 실제 
 - 실제 저장 파일은 `.gitignore`에서 제외해 캐릭터 데이터가 소스 저장소에 올라가지 않게 했습니다.
 
 현재 JSON은 단일 프로세스 학습용입니다. 다음 단계에서는 SQLite/PostgreSQL 스키마, 트랜잭션, 낙관적 동시성 버전을 도입할 수 있습니다.
+
+### 다음 단계 11. SQLite 트랜잭션과 낙관적 동시성
+
+이번 step에서는 서버 기본 캐릭터 저장소를 JSON에서 SQLite로 교체했습니다. 공식 `Microsoft.Data.Sqlite` ADO.NET provider를 사용하며, .NET 8 계열에 맞춘 8.0.29 버전을 참조합니다.
+
+SQLite 스키마:
+
+```sql
+CREATE TABLE schema_info (
+    version INTEGER NOT NULL
+);
+
+CREATE TABLE characters (
+    player_id INTEGER PRIMARY KEY,
+    version INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+```
+
+캐릭터의 구조화된 스냅샷은 현재 JSON payload로 보관하고, 조회와 동시성 제어에 필요한 player ID와 version은 별도 컬럼으로 둡니다. 이후 인벤토리 검색이나 거래 기능이 필요해지면 각각의 정규화 테이블로 분리할 수 있습니다.
+
+낙관적 동시성 처리:
+
+```text
+클라이언트 A: version 1 load
+클라이언트 B: version 1 load
+
+A save -> WHERE version = 1 -> 성공, version 2
+B save -> WHERE version = 1 -> 변경된 행 0개
+       -> CharacterConcurrencyException
+       -> version 2 데이터 보존
+```
+
+INSERT와 UPDATE는 SQLite transaction 안에서 실행됩니다. UPDATE 조건에 기존 version을 포함하고 실제 변경 행이 정확히 1개인지 확인합니다. `/save` 성공 후 `PlayerSession.SaveVersion`을 새 버전으로 갱신하며, 충돌 시 최신 데이터를 `/load`하라는 안내를 반환합니다.
+
+공부 포인트:
+
+- 트랜잭션은 저장 데이터와 version 변경을 하나의 원자적 작업으로 만듭니다.
+- 낙관적 동시성은 장시간 DB lock을 잡지 않고 저장 순간에 충돌을 검출합니다.
+- stale save가 최신 캐릭터 상태를 조용히 덮어쓰지 못합니다.
+- `schema_info`는 이후 컬럼 및 테이블 migration 버전을 관리할 시작점입니다.
+- SQLite 파일과 WAL/SHM 파일은 `.gitignore`에서 제외했습니다.
+- 기존 JSON 및 메모리 저장소도 같은 인터페이스와 version 규칙을 유지합니다.
+
+SQLite는 단일 월드 서버 학습과 로컬 개발에 적합합니다. 다음 단계에서는 자동 저장, 접속 종료 저장, 저장 실패 재시도와 dirty-state 추적을 추가할 수 있습니다.

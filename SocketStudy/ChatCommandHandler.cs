@@ -348,8 +348,22 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            await characters.SaveAsync(connection.Session.CreateSaveData());
-            await sendToClientAsync(connection, MessageType.Notice, $"Character {connection.Session.PlayerId} saved.");
+            try
+            {
+                CharacterSaveData saved = await characters.SaveAsync(connection.Session.CreateSaveData());
+                connection.Session.MarkSaved(saved.Version);
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    $"Character {connection.Session.PlayerId} saved at version {saved.Version}.");
+            }
+            catch (CharacterConcurrencyException)
+            {
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    "Character save conflict. Load the latest version before saving again.");
+            }
             return true;
         }
 

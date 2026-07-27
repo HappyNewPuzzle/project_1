@@ -5,4 +5,5 @@ public sealed record CharacterSaveData(
     int CurrentHealth,
     long Experience,
     IReadOnlyList<ItemStack> Inventory,
-    IReadOnlyDictionary<string, string> Equipment);
+    IReadOnlyDictionary<string, string> Equipment,
+    long Version = 0);

@@ -27,8 +27,8 @@ sealed class ChatServer
 
     private readonly MonsterRegistry monsters = new();
     private readonly GroundLootRegistry groundLoot = new();
-    private readonly ICharacterRepository characters = new JsonCharacterRepository(
-        Path.Combine(Environment.CurrentDirectory, "Data", "characters.json"));
+    private readonly ICharacterRepository characters = new SqliteCharacterRepository(
+        Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;

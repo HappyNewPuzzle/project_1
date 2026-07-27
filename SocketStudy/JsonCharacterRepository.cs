@@ -11,13 +11,20 @@ public sealed class JsonCharacterRepository : ICharacterRepository
         this.filePath = Path.GetFullPath(filePath);
     }
 
-    public async Task SaveAsync(CharacterSaveData character, CancellationToken cancellationToken = default)
+    public async Task<CharacterSaveData> SaveAsync(CharacterSaveData character, CancellationToken cancellationToken = default)
     {
         await gate.WaitAsync(cancellationToken);
         try
         {
             Dictionary<long, CharacterSaveData> characters = await ReadAllAsync(cancellationToken);
-            characters[character.PlayerId] = character;
+            CharacterSaveData? current = characters.GetValueOrDefault(character.PlayerId);
+            if ((current?.Version ?? 0) != character.Version)
+            {
+                throw new CharacterConcurrencyException(character.PlayerId);
+            }
+
+            CharacterSaveData saved = character with { Version = character.Version + 1 };
+            characters[character.PlayerId] = saved;
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory))
             {
@@ -31,6 +38,7 @@ public sealed class JsonCharacterRepository : ICharacterRepository
             }
 
             File.Move(temporaryPath, filePath, overwrite: true);
+            return saved;
         }
         finally
         {

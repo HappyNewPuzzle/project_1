@@ -2951,6 +2951,39 @@ public static async Task RunCharacterPersistenceTestAsync()
         {
             throw new InvalidOperationException("Character restore should recover world, progression, inventory, and equipment state.");
         }
+
+        string sqlitePath = Path.Combine(directory, "characters.db");
+        var sqlite = new SqliteCharacterRepository(sqlitePath);
+        CharacterSaveData sqliteVersion1 = await sqlite.SaveAsync(data);
+        CharacterSaveData? firstReader = await sqlite.LoadAsync(source.PlayerId);
+        CharacterSaveData? staleReader = await sqlite.LoadAsync(source.PlayerId);
+        if (firstReader is null || staleReader is null || sqliteVersion1.Version != 1)
+        {
+            throw new InvalidOperationException("SQLite repository should insert and reload version 1.");
+        }
+
+        CharacterSaveData sqliteVersion2 = await sqlite.SaveAsync(firstReader with { Experience = 200 });
+        if (sqliteVersion2.Version != 2)
+        {
+            throw new InvalidOperationException("SQLite repository should increment the character save version.");
+        }
+
+        try
+        {
+            await sqlite.SaveAsync(staleReader with { Experience = 300 });
+            throw new InvalidOperationException("SQLite repository should reject a stale character save.");
+        }
+        catch (CharacterConcurrencyException)
+        {
+            // Expected: stale version 1 cannot overwrite stored version 2.
+        }
+
+        CharacterSaveData? sqliteReloaded = await new SqliteCharacterRepository(sqlitePath)
+            .LoadAsync(source.PlayerId);
+        if (sqliteReloaded?.Version != 2 || sqliteReloaded.Experience != 200)
+        {
+            throw new InvalidOperationException("Rejected stale saves must not overwrite the committed SQLite state.");
+        }
     }
     finally
     {
