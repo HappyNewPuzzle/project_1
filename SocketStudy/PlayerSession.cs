@@ -1,6 +1,7 @@
 // MMO 서버로 확장할 때 플레이어의 게임 상태를 담기 위한 세션 모델입니다.
 public sealed class PlayerSession
 {
+    private readonly Dictionary<string, int> inventory = new(StringComparer.OrdinalIgnoreCase);
     // 아직 로그인하지 않은 연결에 붙일 임시 플레이어 ID입니다.
     public const long AnonymousPlayerId = 0;
 
@@ -34,6 +35,10 @@ public sealed class PlayerSession
     public DateTimeOffset? LastAttackAt { get; private set; }
 
     public long Experience { get; private set; }
+
+    public int Level => checked((int)Math.Min(int.MaxValue, Experience / WorldRules.ExperiencePerLevel + 1));
+
+    public long ExperienceToNextLevel => checked((long)Level * WorldRules.ExperiencePerLevel - Experience);
 
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
@@ -175,15 +180,34 @@ public sealed class PlayerSession
         LastAttackAt = serverTime;
     }
 
-    public void AddExperience(int amount)
+    public ExperienceGainResult AddExperience(int amount)
     {
         if (amount <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(amount), "Experience amount must be positive.");
         }
 
+        int previousLevel = Level;
         Experience = checked(Experience + amount);
+        return new ExperienceGainResult(amount, Experience, previousLevel, Level);
     }
+
+    public void AddItem(ItemDrop drop)
+    {
+        ArgumentNullException.ThrowIfNull(drop);
+        if (string.IsNullOrWhiteSpace(drop.ItemId) || drop.Quantity <= 0)
+        {
+            throw new ArgumentException("Item drop must have an id and positive quantity.", nameof(drop));
+        }
+
+        inventory.TryGetValue(drop.ItemId, out int currentQuantity);
+        inventory[drop.ItemId] = checked(currentQuantity + drop.Quantity);
+    }
+
+    public ItemStack[] SnapshotInventory() => inventory
+        .Select(item => new ItemStack(item.Key, item.Value))
+        .OrderBy(item => item.ItemId, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
     // 플레이어를 현재 월드에서 사라진 상태로 바꿉니다.
     public void Despawn()
@@ -215,5 +239,6 @@ public sealed class PlayerSession
         CurrentHealth = MaxHealth;
         LastAttackAt = null;
         Experience = 0;
+        inventory.Clear();
     }
 }

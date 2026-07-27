@@ -55,7 +55,7 @@ public static class WorldRules
 
     public static readonly TimeSpan MonsterRespawnDelay = TimeSpan.FromSeconds(5);
 
-    public const int MonsterKillExperience = 25;
+    public const int ExperiencePerLevel = 100;
 
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)

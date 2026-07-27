@@ -13,6 +13,8 @@ public sealed class ChatCommandHandler
         "/session",
         "/health",
         "/experience",
+        "/level",
+        "/inventory",
         "/login <playerId>",
         "/logout",
         "/pos",
@@ -299,6 +301,28 @@ public sealed class ChatCommandHandler
                 connection,
                 MessageType.Notice,
                 $"Experience: {connection.Session.Experience}");
+            return true;
+        }
+
+        if (message.Text.Equals("/level", StringComparison.OrdinalIgnoreCase))
+        {
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Level: {connection.Session.Level}, XP: {connection.Session.Experience}, next level in {connection.Session.ExperienceToNextLevel} XP");
+            return true;
+        }
+
+        if (message.Text.Equals("/inventory", StringComparison.OrdinalIgnoreCase))
+        {
+            ItemStack[] items = connection.Session.SnapshotInventory();
+            string displayItems = items.Length == 0
+                ? "(empty)"
+                : string.Join(", ", items.Select(item => $"{item.ItemId} x{item.Quantity}"));
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Inventory ({items.Length}): {displayItems}");
             return true;
         }
 
@@ -712,7 +736,7 @@ public sealed class ChatCommandHandler
             }
 
             string outcome = result.IsFatal
-                ? $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. +{result.ExperienceAwarded} XP. Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds."
+                ? FormatMonsterDefeat(result)
                 : $"Attacked {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. HP: {result.RemainingHealth}/{WorldRules.MonsterMaxHealth}";
             await sendToClientAsync(connection, MessageType.Notice, outcome);
             string nearbyOutcome = result.IsFatal
@@ -1160,6 +1184,15 @@ public sealed class ChatCommandHandler
                     queuedEvent.Event.ToNoticeMessage());
             }
         }
+    }
+
+    private static string FormatMonsterDefeat(PlayerAttackResult result)
+    {
+        string drop = result.ItemDrop is null
+            ? "no item"
+            : $"{result.ItemDrop.ItemId} x{result.ItemDrop.Quantity}";
+        string levelUp = result.LeveledUp ? $" Level up: {result.CurrentLevel}!" : string.Empty;
+        return $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. +{result.ExperienceAwarded} XP, drop: {drop}.{levelUp} Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds.";
     }
 
     private async Task ChangeClientNameAsync(ClientConnection connection, string requestedName)

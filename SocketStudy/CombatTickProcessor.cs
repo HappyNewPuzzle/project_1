@@ -73,16 +73,27 @@ public sealed class CombatTickProcessor
 
         attacker.RecordAttack(serverTime);
         int experienceAwarded = 0;
+        int currentLevel = attacker.Level;
+        bool leveledUp = false;
+        ItemDrop? itemDrop = null;
         if (damageResult.IsFatal)
         {
-            experienceAwarded = WorldRules.MonsterKillExperience;
-            attacker.AddExperience(experienceAwarded);
+            MonsterRewardDefinition reward = MonsterRewardCatalog.Get(damageResult.Monster.MonsterType);
+            ExperienceGainResult experienceResult = attacker.AddExperience(reward.Experience);
+            attacker.AddItem(reward.Drop);
+            experienceAwarded = experienceResult.ExperienceAwarded;
+            currentLevel = experienceResult.CurrentLevel;
+            leveledUp = experienceResult.LeveledUp;
+            itemDrop = reward.Drop;
         }
         return PlayerAttackResult.Accepted(
             damageResult.Monster,
             damageResult.DamageApplied,
             damageResult.RemainingHealth,
             damageResult.IsFatal,
-            experienceAwarded);
+            experienceAwarded,
+            currentLevel,
+            leveledUp,
+            itemDrop);
     }
 }

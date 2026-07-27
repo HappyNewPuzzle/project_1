@@ -2630,12 +2630,26 @@ public static async Task RunPlayerCombatTickTestAsync()
     if (!second.IsAccepted ||
         !fatal.IsFatal ||
         fatal.Damage != 10 ||
-        fatal.ExperienceAwarded != WorldRules.MonsterKillExperience ||
-        attacker.Experience != WorldRules.MonsterKillExperience ||
+        fatal.ExperienceAwarded != 30 ||
+        attacker.Experience != 30 ||
+        fatal.ItemDrop != new ItemDrop("bone", 1) ||
+        attacker.SnapshotInventory().Single() != new ItemStack("bone", 1) ||
         defeatedMonster?.IsSpawned != false ||
         defeatedMonster.KillCreditPlayerId != attacker.PlayerId)
     {
         throw new InvalidOperationException("Fatal player damage should despawn the monster and clamp applied damage.");
+    }
+
+    ExperienceGainResult levelUp = attacker.AddExperience(70);
+    if (!levelUp.LeveledUp || attacker.Level != 2 || attacker.ExperienceToNextLevel != 100)
+    {
+        throw new InvalidOperationException("Player experience should advance levels at the configured threshold.");
+    }
+
+    MonsterRewardDefinition fallbackReward = MonsterRewardCatalog.Get("unknown-monster");
+    if (fallbackReward.Experience != 20 || fallbackReward.Drop != new ItemDrop("monster-token", 1))
+    {
+        throw new InvalidOperationException("Unknown monster types should use the default server reward definition.");
     }
 
     PlayerAttackResult deadTarget = await AttackAtAsync(start + TimeSpan.FromSeconds(2));
@@ -2755,6 +2769,22 @@ public static async Task RunMonsterCommandsTestAsync()
     if (context.SentMessages.Last().Text != "Experience: 0")
     {
         throw new InvalidOperationException("/experience should show server-owned experience.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/level"));
+    if (context.SentMessages.Last().Text != "Level: 1, XP: 0, next level in 100 XP")
+    {
+        throw new InvalidOperationException("/level should show level progress from server experience.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/inventory"));
+    if (context.SentMessages.Last().Text != "Inventory (0): (empty)")
+    {
+        throw new InvalidOperationException("/inventory should show an empty server inventory before drops.");
     }
 }
 }

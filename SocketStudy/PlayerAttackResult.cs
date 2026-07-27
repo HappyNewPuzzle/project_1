@@ -7,16 +7,33 @@ public sealed record PlayerAttackResult(
     int Damage,
     int RemainingHealth,
     bool IsFatal,
-    int ExperienceAwarded)
+    int ExperienceAwarded,
+    int CurrentLevel,
+    bool LeveledUp,
+    ItemDrop? ItemDrop)
 {
     public static PlayerAttackResult Rejected(string reason, long monsterId) =>
-        new(false, reason, monsterId, null, 0, 0, false, 0);
+        new(false, reason, monsterId, null, 0, 0, false, 0, 0, false, null);
 
     public static PlayerAttackResult Accepted(
         MonsterEntity monster,
         int damage,
         int remainingHealth,
         bool isFatal,
-        int experienceAwarded) =>
-        new(true, null, monster.MonsterId, monster.MonsterType, damage, remainingHealth, isFatal, experienceAwarded);
+        int experienceAwarded,
+        int currentLevel,
+        bool leveledUp,
+        ItemDrop? itemDrop) =>
+        new(
+            true,
+            null,
+            monster.MonsterId,
+            monster.MonsterType,
+            damage,
+            remainingHealth,
+            isFatal,
+            experienceAwarded,
+            currentLevel,
+            leveledUp,
+            itemDrop);
 }
