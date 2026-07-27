@@ -2018,3 +2018,47 @@ Inventory (2): bone x3, slime-gel x1
 - 방어력에도 최소 피해 1을 적용해 공격이 완전히 무효화되는 상황을 제한합니다.
 
 다음 단계에서는 데이터베이스 영속성으로 캐릭터 레벨, 인벤토리와 장비를 저장하는 구조가 적합합니다.
+
+### 다음 단계 10. 캐릭터 영속성 계층
+
+이번 step에서는 캐릭터 상태를 서버 재시작 이후에도 유지하기 위한 `ICharacterRepository`와 JSON 파일 구현을 추가했습니다.
+
+저장 대상:
+
+- 플레이어 ID
+- 맵과 위치
+- 현재 HP
+- 누적 경험치와 계산된 레벨
+- 인벤토리 아이템과 수량
+- 장착 중인 Weapon/Armor
+
+새 명령:
+
+```text
+/save
+/load
+```
+
+`/load`는 인증된 상태이면서 despawn 상태일 때만 허용됩니다. 현재 AOI에 존재하는 플레이어의 위치와 장비를 갑자기 덮어써 월드 인덱스가 어긋나는 상황을 막기 위한 규칙입니다.
+
+저장 구조:
+
+```text
+PlayerSession.CreateSaveData()
+-> CharacterSaveData
+-> ICharacterRepository.SaveAsync(...)
+-> JsonCharacterRepository
+-> Data/characters.json
+```
+
+JSON 저장소는 전체 상태를 `.tmp` 파일에 먼저 기록한 뒤 실제 파일로 교체합니다. 저장 도중 프로세스가 종료돼 기존 파일 일부만 덮어써지는 위험을 줄입니다. `SemaphoreSlim`으로 같은 프로세스 안의 동시 save/load도 직렬화합니다.
+
+공부 포인트:
+
+- 저장 모델에는 소켓, stream, lock 같은 런타임 객체를 포함하지 않습니다.
+- 저장 인터페이스와 구현을 분리해 이후 JSON을 SQLite, PostgreSQL 등으로 교체할 수 있습니다.
+- 복원 시 player ID, 맵, 좌표, 장비 슬롯과 아이템 정의를 다시 검증합니다.
+- 테스트는 빠른 `InMemoryCharacterRepository`와 실제 JSON 재로드 테스트를 나눠 사용합니다.
+- 실제 저장 파일은 `.gitignore`에서 제외해 캐릭터 데이터가 소스 저장소에 올라가지 않게 했습니다.
+
+현재 JSON은 단일 프로세스 학습용입니다. 다음 단계에서는 SQLite/PostgreSQL 스키마, 트랜잭션, 낙관적 동시성 버전을 도입할 수 있습니다.

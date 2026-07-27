@@ -27,6 +27,7 @@ MonsterTests.RunMonsterRegistryTest();
 MonsterTests.RunMonsterAiTickTest();
 await MonsterTests.RunPlayerCombatTickTestAsync();
 await MonsterTests.RunMonsterCommandsTestAsync();
+await MonsterTests.RunCharacterPersistenceTestAsync();
 RunServerPortParseTest();
 RunLocalClientOptionParseTest();
 RunRemoteClientOptionParseTest();
@@ -2915,6 +2916,63 @@ public static async Task RunMonsterCommandsTestAsync()
         throw new InvalidOperationException("Item catalog should expose server-owned item rarity.");
     }
 }
+
+public static async Task RunCharacterPersistenceTestAsync()
+{
+    var source = new PlayerSession();
+    source.Authenticate(900);
+    source.MoveTo(new WorldPosition(7, 8));
+    source.AddExperience(125);
+    source.AddItem(new ItemDrop("iron-sword", 1));
+    source.Equip("iron-sword");
+    source.AddItem(new ItemDrop("slime-gel", 3));
+    CharacterSaveData data = source.CreateSaveData();
+
+    string directory = Path.Combine(Path.GetTempPath(), $"socket-study-{Guid.NewGuid():N}");
+    string filePath = Path.Combine(directory, "characters.json");
+    try
+    {
+        var writer = new JsonCharacterRepository(filePath);
+        await writer.SaveAsync(data);
+        var reader = new JsonCharacterRepository(filePath);
+        CharacterSaveData? loadedData = await reader.LoadAsync(source.PlayerId);
+        if (loadedData is null)
+        {
+            throw new InvalidOperationException("JSON character repository should reload a saved character.");
+        }
+
+        var restored = new PlayerSession();
+        restored.Authenticate(source.PlayerId);
+        restored.Restore(loadedData);
+        if (restored.Position != source.Position ||
+            restored.Experience != source.Experience ||
+            restored.AttackPower != source.AttackPower ||
+            !restored.SnapshotInventory().Contains(new ItemStack("slime-gel", 3)))
+        {
+            throw new InvalidOperationException("Character restore should recover world, progression, inventory, and equipment state.");
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.Connection.Session.Authenticate(901);
+    context.Connection.Session.MoveTo(new WorldPosition(4, 5));
+    context.Connection.Session.AddExperience(30);
+    await context.Handler.TryHandleAsync(context.Connection, new NetworkMessage(MessageType.Command, "/save"));
+    context.Connection.Session.MoveTo(WorldPosition.Origin);
+    await context.Handler.TryHandleAsync(context.Connection, new NetworkMessage(MessageType.Command, "/load"));
+    if (context.Connection.Session.Position != new WorldPosition(4, 5) ||
+        context.Connection.Session.Experience != 30)
+    {
+        throw new InvalidOperationException("/save and /load should round-trip the authenticated character.");
+    }
+}
 }
 
 sealed class CommandHandlerTestContext : IAsyncDisposable
@@ -2944,6 +3002,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     public MonsterRegistry Monsters { get; } = new();
 
     public GroundLootRegistry GroundLoot { get; } = new();
+
+    public InMemoryCharacterRepository Characters { get; } = new();
 
     public string? DuplicateName { get; set; }
 
@@ -2987,7 +3047,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             new WorldEventQueue(),
             _ => { },
             Monsters,
-            GroundLoot);
+            GroundLoot,
+            Characters);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

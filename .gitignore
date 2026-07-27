@@ -13,3 +13,6 @@ TestResults/
 *.trx
 
 *.log
+
+Data/*.json
+Data/*.tmp

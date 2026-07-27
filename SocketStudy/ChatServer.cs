@@ -27,6 +27,8 @@ sealed class ChatServer
 
     private readonly MonsterRegistry monsters = new();
     private readonly GroundLootRegistry groundLoot = new();
+    private readonly ICharacterRepository characters = new JsonCharacterRepository(
+        Path.Combine(Environment.CurrentDirectory, "Data", "characters.json"));
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -84,7 +86,8 @@ sealed class ChatServer
             worldEvents,
             clients.RefreshWorldIndex,
             monsters,
-            groundLoot);
+            groundLoot,
+            characters);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

@@ -21,6 +21,8 @@ public sealed class ChatCommandHandler
         "/use <itemId>",
         "/loot",
         "/pickup <lootId>",
+        "/save",
+        "/load",
         "/login <playerId>",
         "/logout",
         "/pos",
@@ -142,6 +144,7 @@ public sealed class ChatCommandHandler
 
     private readonly MonsterRegistry monsters;
     private readonly GroundLootRegistry groundLoot;
+    private readonly ICharacterRepository characters;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -165,7 +168,8 @@ public sealed class ChatCommandHandler
         WorldEventQueue worldEvents,
         Action<ClientConnection> refreshWorldIndex,
         MonsterRegistry monsters,
-        GroundLootRegistry groundLoot)
+        GroundLootRegistry groundLoot,
+        ICharacterRepository characters)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -203,6 +207,7 @@ public sealed class ChatCommandHandler
         this.refreshWorldIndex = refreshWorldIndex;
         this.monsters = monsters;
         this.groundLoot = groundLoot;
+        this.characters = characters;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -332,6 +337,48 @@ public sealed class ChatCommandHandler
                 connection,
                 MessageType.Notice,
                 $"Inventory ({items.Length}): {displayItems}");
+            return true;
+        }
+
+        if (message.Text.Equals("/save", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!connection.Session.IsAuthenticated)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "You must login before saving.");
+                return true;
+            }
+
+            await characters.SaveAsync(connection.Session.CreateSaveData());
+            await sendToClientAsync(connection, MessageType.Notice, $"Character {connection.Session.PlayerId} saved.");
+            return true;
+        }
+
+        if (message.Text.Equals("/load", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!connection.Session.IsAuthenticated)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "You must login before loading.");
+                return true;
+            }
+
+            if (connection.Session.IsSpawned)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "You must despawn before loading.");
+                return true;
+            }
+
+            CharacterSaveData? saved = await characters.LoadAsync(connection.Session.PlayerId);
+            if (saved is null)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, $"No saved character found: {connection.Session.PlayerId}");
+                return true;
+            }
+
+            connection.Session.Restore(saved);
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Character {connection.Session.PlayerId} loaded at map={connection.Session.MapId}, {connection.Session.Position}.");
             return true;
         }
 

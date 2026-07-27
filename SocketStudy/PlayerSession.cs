@@ -221,6 +221,63 @@ public sealed class PlayerSession
         .OrderBy(item => item.ItemId, StringComparer.OrdinalIgnoreCase)
         .ToArray();
 
+    public CharacterSaveData CreateSaveData()
+    {
+        if (!IsAuthenticated)
+        {
+            throw new InvalidOperationException("Anonymous sessions cannot be saved.");
+        }
+
+        return new CharacterSaveData(
+            PlayerId,
+            MapId,
+            Position,
+            CurrentHealth,
+            Experience,
+            SnapshotInventory(),
+            equipment.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value));
+    }
+
+    public void Restore(CharacterSaveData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (!IsAuthenticated || data.PlayerId != PlayerId || IsSpawned)
+        {
+            throw new InvalidOperationException("Character data can only restore its matching unspawned session.");
+        }
+
+        if (data.MapId <= 0 || !WorldRules.IsInsideWorld(data.Position) || data.Experience < 0)
+        {
+            throw new InvalidDataException("Character save contains invalid world state.");
+        }
+
+        MapId = data.MapId;
+        Position = data.Position;
+        CurrentHealth = Math.Clamp(data.CurrentHealth, 0, MaxHealth);
+        Experience = data.Experience;
+        LastMoveAt = null;
+        LastMoveSequence = 0;
+        LastAttackAt = null;
+        inventory.Clear();
+        equipment.Clear();
+
+        foreach (ItemStack item in data.Inventory)
+        {
+            AddItem(new ItemDrop(item.ItemId, item.Quantity));
+        }
+
+        foreach ((string slotName, string itemId) in data.Equipment)
+        {
+            if (!Enum.TryParse(slotName, true, out EquipmentSlot slot) ||
+                ItemCatalog.Find(itemId)?.EquipmentSlot != slot)
+            {
+                throw new InvalidDataException($"Invalid equipped item: {slotName}={itemId}");
+            }
+
+            equipment[slot] = itemId;
+        }
+    }
+
     public IReadOnlyDictionary<EquipmentSlot, string> SnapshotEquipment() =>
         new Dictionary<EquipmentSlot, string>(equipment);
 
