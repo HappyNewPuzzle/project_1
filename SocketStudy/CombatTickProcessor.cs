@@ -4,20 +4,24 @@ public sealed class CombatTickProcessor
     private readonly PlayerAttackRequestQueue attackRequests;
     private readonly MonsterRegistry monsters;
     private readonly IRandomSource random;
+    private readonly GroundLootRegistry groundLoot;
 
     public CombatTickProcessor(
         PlayerAttackRequestQueue attackRequests,
         MonsterRegistry monsters,
+        GroundLootRegistry groundLoot,
         IRandomSource? random = null)
     {
         this.attackRequests = attackRequests;
         this.monsters = monsters;
         this.random = random ?? SystemRandomSource.Shared;
+        this.groundLoot = groundLoot;
     }
 
     public CombatTickResult Process(DateTimeOffset serverTime)
     {
         MonsterEntity[] respawnedMonsters = monsters.RespawnReady(serverTime);
+        groundLoot.RemoveExpired(serverTime);
         var attackResults = new List<PlayerAttackResult>();
 
         while (attackRequests.TryDequeue(out QueuedPlayerAttackRequest? queuedRequest))
@@ -88,7 +92,12 @@ public sealed class CombatTickProcessor
             itemDrops = MonsterRewardCatalog.RollDrops(reward, random);
             foreach (ItemDrop drop in itemDrops)
             {
-                attacker.AddItem(drop);
+                groundLoot.Spawn(
+                    drop,
+                    damageResult.Monster.MapId,
+                    damageResult.Monster.Position,
+                    attacker.PlayerId,
+                    serverTime);
             }
             experienceAwarded = experienceResult.ExperienceAwarded;
             currentLevel = experienceResult.CurrentLevel;

@@ -57,6 +57,12 @@ public static class WorldRules
 
     public const int ExperiencePerLevel = 100;
 
+    public const int LootPickupRange = 2;
+
+    public static readonly TimeSpan LootExclusiveDuration = TimeSpan.FromSeconds(10);
+
+    public static readonly TimeSpan LootLifetime = TimeSpan.FromSeconds(30);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

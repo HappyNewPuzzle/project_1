@@ -46,6 +46,11 @@ public sealed class PlayerSession
         .Where(item => item is not null)
         .Sum(item => item!.AttackBonus);
 
+    public int Defense => equipment.Values
+        .Select(ItemCatalog.Find)
+        .Where(item => item is not null)
+        .Sum(item => item!.DefenseBonus);
+
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
     {
@@ -167,7 +172,8 @@ public sealed class PlayerSession
             return new PlayerDamageResult(0, CurrentHealth, !IsAlive);
         }
 
-        int appliedDamage = Math.Min(damage, CurrentHealth);
+        int reducedDamage = Math.Max(1, damage - Defense);
+        int appliedDamage = Math.Min(reducedDamage, CurrentHealth);
         CurrentHealth -= appliedDamage;
         bool isFatal = CurrentHealth == 0;
         if (isFatal)

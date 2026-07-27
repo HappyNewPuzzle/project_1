@@ -2612,7 +2612,8 @@ public static async Task RunPlayerCombatTickTestAsync()
     attacker.Authenticate(700);
     attacker.Spawn();
     var queue = new PlayerAttackRequestQueue();
-    var processor = new CombatTickProcessor(queue, monsters, new FixedRandomSource(0.05));
+    var groundLoot = new GroundLootRegistry();
+    var processor = new CombatTickProcessor(queue, monsters, groundLoot, new FixedRandomSource(0.05));
     DateTimeOffset start = DateTimeOffset.UnixEpoch;
 
     async Task<PlayerAttackResult> AttackAtAsync(DateTimeOffset serverTime)
@@ -2652,6 +2653,28 @@ public static async Task RunPlayerCombatTickTestAsync()
         throw new InvalidOperationException("Fatal player damage should despawn the monster and clamp applied damage.");
     }
 
+    GroundLoot[] droppedLoot = groundLoot.SnapshotNearby(attacker, start + TimeSpan.FromSeconds(1));
+    if (droppedLoot.Length != 2 || attacker.SnapshotInventory().Length != 0)
+    {
+        throw new InvalidOperationException("Kill drops should exist on the ground before pickup.");
+    }
+
+    var intruder = new PlayerSession();
+    intruder.Authenticate(701);
+    intruder.Spawn();
+    if (groundLoot.TryPickup(droppedLoot[0].LootId, intruder, start + TimeSpan.FromSeconds(1)).IsSuccess)
+    {
+        throw new InvalidOperationException("Ground loot should reject non-owners during the exclusive period.");
+    }
+
+    foreach (GroundLoot entry in droppedLoot)
+    {
+        if (!groundLoot.TryPickup(entry.LootId, attacker, start + TimeSpan.FromSeconds(1)).IsSuccess)
+        {
+            throw new InvalidOperationException("Kill owner should be able to pick up ground loot immediately.");
+        }
+    }
+
     ExperienceGainResult levelUp = attacker.AddExperience(70);
     if (!levelUp.LeveledUp || attacker.Level != 2 || attacker.ExperienceToNextLevel != 100)
     {
@@ -2685,6 +2708,41 @@ public static async Task RunPlayerCombatTickTestAsync()
         !attacker.SnapshotInventory().Contains(new ItemStack("iron-sword", 1)))
     {
         throw new InvalidOperationException("Unequipping should return the item to inventory and remove its bonus.");
+    }
+
+    attacker.AddItem(new ItemDrop("leather-armor", 1));
+    attacker.Equip("leather-armor");
+    int healthBeforeArmorHit = attacker.CurrentHealth;
+    PlayerDamageResult armoredDamage = attacker.ApplyDamage(10);
+    if (attacker.Defense != 3 || armoredDamage.DamageApplied != 7 || attacker.CurrentHealth != healthBeforeArmorHit - 7)
+    {
+        throw new InvalidOperationException("Equipped armor should reduce incoming monster damage.");
+    }
+
+    GroundLoot publicLoot = groundLoot.Spawn(
+        new ItemDrop("monster-token", 1),
+        intruder.MapId,
+        intruder.Position,
+        attacker.PlayerId,
+        start);
+    if (!groundLoot.TryPickup(
+        publicLoot.LootId,
+        intruder,
+        start + WorldRules.LootExclusiveDuration).IsSuccess)
+    {
+        throw new InvalidOperationException("Ground loot should become public after its exclusive period.");
+    }
+
+    GroundLoot expiringLoot = groundLoot.Spawn(
+        new ItemDrop("monster-token", 1),
+        attacker.MapId,
+        attacker.Position,
+        attacker.PlayerId,
+        start);
+    if (groundLoot.RemoveExpired(start + WorldRules.LootLifetime) == 0 ||
+        groundLoot.TryPickup(expiringLoot.LootId, attacker, start + WorldRules.LootLifetime).IsSuccess)
+    {
+        throw new InvalidOperationException("Expired ground loot should be removed from the world.");
     }
 
     PlayerAttackResult deadTarget = await AttackAtAsync(start + TimeSpan.FromSeconds(2));
@@ -2830,6 +2888,32 @@ public static async Task RunMonsterCommandsTestAsync()
     {
         throw new InvalidOperationException("Equipment commands should expose the equipped weapon bonus.");
     }
+
+    GroundLoot commandLoot = context.GroundLoot.Spawn(
+        new ItemDrop("slime-gel", 1),
+        context.Connection.Session.MapId,
+        context.Connection.Session.Position,
+        context.Connection.Session.PlayerId,
+        context.CurrentTime);
+    await context.Handler.TryHandleAsync(context.Connection, new NetworkMessage(MessageType.Command, "/loot"));
+    if (!context.SentMessages.Last().Text.Contains($"#{commandLoot.LootId} slime-gel x1", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("/loot should list nearby ground loot.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, $"/pickup {commandLoot.LootId}"));
+    if (context.SentMessages.Last().Text != "Picked up slime-gel x1." ||
+        !context.Connection.Session.SnapshotInventory().Contains(new ItemStack("slime-gel", 1)))
+    {
+        throw new InvalidOperationException("/pickup should transfer owned ground loot into inventory.");
+    }
+
+    if (ItemCatalog.Find("iron-sword")?.Rarity != ItemRarity.Rare)
+    {
+        throw new InvalidOperationException("Item catalog should expose server-owned item rarity.");
+    }
 }
 }
 
@@ -2859,6 +2943,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public MonsterRegistry Monsters { get; } = new();
 
+    public GroundLootRegistry GroundLoot { get; } = new();
+
     public string? DuplicateName { get; set; }
 
     public DateTimeOffset CurrentTime { get; set; } = DateTimeOffset.UnixEpoch;
@@ -2873,7 +2959,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
         MovementRequestQueue movementRequests = CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor);
         var attackRequests = new PlayerAttackRequestQueue();
-        var combatTickProcessor = new CombatTickProcessor(attackRequests, Monsters);
+        var combatTickProcessor = new CombatTickProcessor(attackRequests, Monsters, GroundLoot);
         worldTickTask = new WorldTickLoop(
             worldTickProcessor,
             TimeSpan.FromMilliseconds(1),
@@ -2900,7 +2986,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             attackRequests,
             new WorldEventQueue(),
             _ => { },
-            Monsters);
+            Monsters,
+            GroundLoot);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

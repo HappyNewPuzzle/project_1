@@ -19,6 +19,8 @@ public sealed class ChatCommandHandler
         "/equip <itemId>",
         "/unequip <Weapon|Armor>",
         "/use <itemId>",
+        "/loot",
+        "/pickup <lootId>",
         "/login <playerId>",
         "/logout",
         "/pos",
@@ -139,6 +141,7 @@ public sealed class ChatCommandHandler
     private readonly Action<ClientConnection> refreshWorldIndex;
 
     private readonly MonsterRegistry monsters;
+    private readonly GroundLootRegistry groundLoot;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -161,7 +164,8 @@ public sealed class ChatCommandHandler
         PlayerAttackRequestQueue attackRequests,
         WorldEventQueue worldEvents,
         Action<ClientConnection> refreshWorldIndex,
-        MonsterRegistry monsters)
+        MonsterRegistry monsters,
+        GroundLootRegistry groundLoot)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -198,6 +202,7 @@ public sealed class ChatCommandHandler
         this.worldEvents = worldEvents;
         this.refreshWorldIndex = refreshWorldIndex;
         this.monsters = monsters;
+        this.groundLoot = groundLoot;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -363,6 +368,30 @@ public sealed class ChatCommandHandler
         if (message.Text.StartsWith("/use ", StringComparison.OrdinalIgnoreCase))
         {
             ItemActionResult result = connection.Session.UseItem(message.Text["/use ".Length..].Trim());
+            await sendToClientAsync(connection, MessageType.Notice, result.Message);
+            return true;
+        }
+
+        if (message.Text.Equals("/loot", StringComparison.OrdinalIgnoreCase))
+        {
+            GroundLoot[] entries = groundLoot.SnapshotNearby(connection.Session, getCurrentTime());
+            string display = entries.Length == 0
+                ? "(none)"
+                : string.Join(", ", entries.Select(entry =>
+                    $"#{entry.LootId} {entry.Item.ItemId} x{entry.Item.Quantity}@{entry.Position}"));
+            await sendToClientAsync(connection, MessageType.Notice, $"Nearby loot ({entries.Length}): {display}");
+            return true;
+        }
+
+        if (message.Text.StartsWith("/pickup ", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!long.TryParse(message.Text["/pickup ".Length..].Trim(), out long lootId) || lootId <= 0)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, "Usage: /pickup <lootId>");
+                return true;
+            }
+
+            LootPickupResult result = groundLoot.TryPickup(lootId, connection.Session, getCurrentTime());
             await sendToClientAsync(connection, MessageType.Notice, result.Message);
             return true;
         }
@@ -1233,7 +1262,7 @@ public sealed class ChatCommandHandler
             ? "no item"
             : string.Join(", ", result.ItemDrops.Select(item => $"{item.ItemId} x{item.Quantity}"));
         string levelUp = result.LeveledUp ? $" Level up: {result.CurrentLevel}!" : string.Empty;
-        return $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. +{result.ExperienceAwarded} XP, drop: {drop}.{levelUp} Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds.";
+        return $"Defeated {result.MonsterType}#{result.MonsterId} for {result.Damage} damage. +{result.ExperienceAwarded} XP, ground loot: {drop}.{levelUp} Respawn in {(int)WorldRules.MonsterRespawnDelay.TotalSeconds} seconds.";
     }
 
     private async Task ChangeClientNameAsync(ClientConnection connection, string requestedName)

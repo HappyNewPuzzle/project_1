@@ -26,6 +26,7 @@ sealed class ChatServer
     private readonly WorldEventQueue worldEvents = new();
 
     private readonly MonsterRegistry monsters = new();
+    private readonly GroundLootRegistry groundLoot = new();
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -40,7 +41,7 @@ sealed class ChatServer
             monsters,
             clients.SnapshotSpawnedPlayerEntities,
             clients.ApplyDamage);
-        combatTickProcessor = new CombatTickProcessor(attackRequests, monsters);
+        combatTickProcessor = new CombatTickProcessor(attackRequests, monsters, groundLoot);
         combatEventDispatchLoop = new CombatEventDispatchLoop(
             combatEvents,
             DispatchCombatNotificationAsync,
@@ -82,7 +83,8 @@ sealed class ChatServer
             attackRequests,
             worldEvents,
             clients.RefreshWorldIndex,
-            monsters);
+            monsters,
+            groundLoot);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
