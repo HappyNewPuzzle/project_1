@@ -28,7 +28,10 @@ sealed class ChatServer
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
         worldTickProcessor = new WorldTickProcessor(movementRequests);
-        monsterAiTickProcessor = new MonsterAiTickProcessor(monsters, clients.SnapshotSpawnedPlayerEntities);
+        monsterAiTickProcessor = new MonsterAiTickProcessor(
+            monsters,
+            clients.SnapshotSpawnedPlayerEntities,
+            clients.ApplyDamage);
         worldTickLoop = new WorldTickLoop(
             worldTickProcessor,
             WorldRules.WorldTickInterval,

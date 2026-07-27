@@ -25,6 +25,12 @@ public sealed class PlayerSession
     // 플레이어가 월드에 스폰되었는지 여부입니다.
     public bool IsSpawned { get; private set; }
 
+    public int MaxHealth => WorldRules.PlayerMaxHealth;
+
+    public int CurrentHealth { get; private set; }
+
+    public bool IsAlive => CurrentHealth > 0;
+
     // 세션을 기본 익명 상태로 시작합니다.
     public PlayerSession()
     {
@@ -40,6 +46,7 @@ public sealed class PlayerSession
         LastMoveSequence = 0;
         // 처음에는 아직 월드에 스폰되지 않았습니다.
         IsSpawned = false;
+        CurrentHealth = MaxHealth;
     }
 
     // 로그인 성공 후 플레이어 ID를 세션에 연결합니다.
@@ -123,8 +130,35 @@ public sealed class PlayerSession
     // 플레이어를 현재 위치에 스폰된 상태로 바꿉니다.
     public void Spawn()
     {
+        if (!IsAlive)
+        {
+            CurrentHealth = MaxHealth;
+        }
         // 월드에 등장한 상태로 표시합니다.
         IsSpawned = true;
+    }
+
+    public PlayerDamageResult ApplyDamage(int damage)
+    {
+        if (damage <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(damage), "Damage must be positive.");
+        }
+
+        if (!IsSpawned || !IsAlive)
+        {
+            return new PlayerDamageResult(0, CurrentHealth, !IsAlive);
+        }
+
+        int appliedDamage = Math.Min(damage, CurrentHealth);
+        CurrentHealth -= appliedDamage;
+        bool isFatal = CurrentHealth == 0;
+        if (isFatal)
+        {
+            IsSpawned = false;
+        }
+
+        return new PlayerDamageResult(appliedDamage, CurrentHealth, isFatal);
     }
 
     // 플레이어를 현재 월드에서 사라진 상태로 바꿉니다.
@@ -154,5 +188,6 @@ public sealed class PlayerSession
         LastMoveAt = null;
         // 다음 로그인에 이전 이동 순서가 이어지지 않도록 초기화합니다.
         LastMoveSequence = 0;
+        CurrentHealth = MaxHealth;
     }
 }

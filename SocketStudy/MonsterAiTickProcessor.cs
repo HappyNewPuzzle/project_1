@@ -3,11 +3,16 @@ public sealed class MonsterAiTickProcessor
 {
     private readonly MonsterRegistry monsters;
     private readonly Func<PlayerEntity[]> getPlayers;
+    private readonly Func<long, int, PlayerDamageResult?> applyPlayerDamage;
 
-    public MonsterAiTickProcessor(MonsterRegistry monsters, Func<PlayerEntity[]> getPlayers)
+    public MonsterAiTickProcessor(
+        MonsterRegistry monsters,
+        Func<PlayerEntity[]> getPlayers,
+        Func<long, int, PlayerDamageResult?> applyPlayerDamage)
     {
         this.monsters = monsters;
         this.getPlayers = getPlayers;
+        this.applyPlayerDamage = applyPlayerDamage;
     }
 
     public MonsterAiTickResult Process(DateTimeOffset serverTime)
@@ -16,12 +21,14 @@ public sealed class MonsterAiTickProcessor
             .Where(player => player.IsSpawned)
             .ToArray();
         var movements = new List<MonsterMovement>();
+        var attacks = new List<MonsterAttack>();
 
         foreach (MonsterEntity monster in monsters.Snapshot())
         {
             MonsterEntity updated = monster;
             PlayerEntity? target = null;
             WorldPosition? destination = null;
+            bool attacked = false;
 
             switch (monster.AiState)
             {
@@ -71,7 +78,30 @@ public sealed class MonsterAiTickProcessor
                     break;
             }
 
-            bool canMove = destination is not null &&
+            bool isInAttackRange = updated.AiState == MonsterAiState.Chasing &&
+                target is not null &&
+                WorldRules.GetDistance(monster.Position, target.Position) <= WorldRules.MonsterAttackRange;
+            bool attackCooldownElapsed = monster.LastAttackedAt is null ||
+                serverTime - monster.LastAttackedAt.Value >= WorldRules.MonsterAttackInterval;
+            if (isInAttackRange && attackCooldownElapsed)
+            {
+                PlayerDamageResult? damageResult = applyPlayerDamage(
+                    target!.PlayerId,
+                    WorldRules.MonsterAttackDamage);
+                if (damageResult is not null && damageResult.DamageApplied > 0)
+                {
+                    attacked = true;
+                    updated = updated with { LastAttackedAt = serverTime };
+                    attacks.Add(new MonsterAttack(
+                        monster.MonsterId,
+                        target.PlayerId,
+                        damageResult.DamageApplied,
+                        damageResult.RemainingHealth,
+                        damageResult.IsFatal));
+                }
+            }
+
+            bool canMove = !attacked && destination is not null &&
                 destination.Value != monster.Position &&
                 (monster.LastMovedAt is null ||
                     serverTime - monster.LastMovedAt.Value >= WorldRules.MonsterMoveInterval);
@@ -104,7 +134,7 @@ public sealed class MonsterAiTickProcessor
             }
         }
 
-        return new MonsterAiTickResult(movements);
+        return new MonsterAiTickResult(movements, attacks);
     }
 
     private static PlayerEntity? FindNearestDetectedPlayer(

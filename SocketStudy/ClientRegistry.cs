@@ -255,6 +255,28 @@ public sealed class ClientRegistry
         }
     }
 
+    public PlayerDamageResult? ApplyDamage(long playerId, int damage)
+    {
+        lock (gate)
+        {
+            ClientConnection? target = clients.FirstOrDefault(client =>
+                client.Session.PlayerId == playerId &&
+                client.Session.IsSpawned);
+            if (target is null)
+            {
+                return null;
+            }
+
+            PlayerDamageResult result = target.Session.ApplyDamage(damage);
+            if (result.IsFatal)
+            {
+                worldGridIndex.Refresh(target);
+            }
+
+            return result;
+        }
+    }
+
     // 특정 채팅방에 있는 접속자 목록의 복사본을 가져옵니다.
     public ClientConnection[] SnapshotRoom(string roomName, ClientConnection? except = null)
     {

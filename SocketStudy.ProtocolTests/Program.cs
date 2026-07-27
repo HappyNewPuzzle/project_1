@@ -2461,7 +2461,7 @@ public static void RunMonsterAiTickTest()
         new PlayerEntity(20, "bob", 1, new WorldPosition(2, 1), true),
         new PlayerEntity(1, "other-map", 2, WorldPosition.Origin, true)
     ];
-    var processor = new MonsterAiTickProcessor(registry, () => players);
+    var processor = new MonsterAiTickProcessor(registry, () => players, (_, _) => null);
     DateTimeOffset firstTick = DateTimeOffset.UnixEpoch;
 
     MonsterAiTickResult firstResult = processor.Process(firstTick);
@@ -2526,11 +2526,68 @@ public static void RunMonsterAiTickTest()
                 1,
                 new WorldPosition(WorldRules.MonsterDetectionDistance + 1, 0),
                 true)
-        ]);
+        ],
+        (_, _) => null);
     if (distantProcessor.Process(firstTick).Movements.Count != 0 ||
         distantRegistry.SnapshotMap(1).Single().AiState != MonsterAiState.Idle)
     {
         throw new InvalidOperationException("Idle monsters should ignore players outside their detection distance.");
+    }
+
+    RunMonsterCombatTest();
+}
+
+private static void RunMonsterCombatTest()
+{
+    var registry = new MonsterRegistry();
+    registry.TrySpawn(new MonsterEntity(50, "orc", 1, WorldPosition.Origin));
+    var player = new PlayerSession();
+    player.Authenticate(100);
+    player.MoveTo(new WorldPosition(1, 0));
+    player.Spawn();
+    PlayerEntity[] GetPlayers() =>
+    [
+        new PlayerEntity(
+            player.PlayerId,
+            "hero",
+            player.MapId,
+            player.Position,
+            player.IsSpawned)
+    ];
+    PlayerDamageResult? ApplyDamage(long playerId, int damage) =>
+        playerId == player.PlayerId ? player.ApplyDamage(damage) : null;
+    var processor = new MonsterAiTickProcessor(registry, GetPlayers, ApplyDamage);
+    DateTimeOffset start = DateTimeOffset.UnixEpoch;
+
+    MonsterAiTickResult firstAttackTick = processor.Process(start);
+    MonsterAttack firstAttack = firstAttackTick.Attacks.Single();
+    if (firstAttack.Damage != WorldRules.MonsterAttackDamage ||
+        firstAttack.RemainingHealth != WorldRules.PlayerMaxHealth - WorldRules.MonsterAttackDamage ||
+        firstAttack.IsFatal ||
+        player.CurrentHealth != firstAttack.RemainingHealth)
+    {
+        throw new InvalidOperationException("Monster combat should apply authoritative damage in attack range.");
+    }
+
+    MonsterAiTickResult cooldownTick = processor.Process(start + TimeSpan.FromMilliseconds(500));
+    if (cooldownTick.Attacks.Count != 0 ||
+        player.CurrentHealth != WorldRules.PlayerMaxHealth - WorldRules.MonsterAttackDamage)
+    {
+        throw new InvalidOperationException("Monster combat should respect the attack cooldown.");
+    }
+
+    MonsterAttack? fatalAttack = null;
+    for (int attackNumber = 2; attackNumber <= 10; attackNumber++)
+    {
+        DateTimeOffset attackTime = start +
+            TimeSpan.FromTicks(WorldRules.MonsterAttackInterval.Ticks * (attackNumber - 1));
+        MonsterAiTickResult attackTick = processor.Process(attackTime);
+        fatalAttack = attackTick.Attacks.Single();
+    }
+
+    if (fatalAttack is null || !fatalAttack.IsFatal || player.IsAlive || player.IsSpawned)
+    {
+        throw new InvalidOperationException("Fatal monster damage should kill and despawn the player session.");
     }
 }
 
@@ -2554,7 +2611,7 @@ public static async Task RunMonsterCommandsTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/monsters"));
 
-    if (!context.SentMessages.Last().Text.Contains("slime#10[Idle]@x=3, y=4", StringComparison.Ordinal))
+    if (!context.SentMessages.Last().Text.Contains("slime#10[Idle, hp=50/50]@x=3, y=4", StringComparison.Ordinal))
     {
         throw new InvalidOperationException("/monsters should list monsters in the player's current map.");
     }
@@ -2566,6 +2623,14 @@ public static async Task RunMonsterCommandsTestAsync()
     if (context.SentMessages.Last().Text != "Monster id is already in use: 10" || context.Monsters.Count != 1)
     {
         throw new InvalidOperationException("/spawn-monster should reject duplicate monster ids.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/health"));
+    if (context.SentMessages.Last().Text != "Health: 100/100, state=alive")
+    {
+        throw new InvalidOperationException("/health should show the authoritative player health state.");
     }
 }
 }

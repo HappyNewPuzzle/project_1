@@ -37,6 +37,16 @@ public static class WorldRules
     // Monsters stop chasing targets beyond this distance from their spawn point.
     public const int MonsterLeashDistance = 15;
 
+    public const int PlayerMaxHealth = 100;
+
+    public const int MonsterMaxHealth = 50;
+
+    public const int MonsterAttackDamage = 10;
+
+    public const int MonsterAttackRange = 1;
+
+    public static readonly TimeSpan MonsterAttackInterval = TimeSpan.FromSeconds(1);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

@@ -11,6 +11,7 @@ public sealed class ChatCommandHandler
         "/rename <nickname>",
         "/whoami",
         "/session",
+        "/health",
         "/login <playerId>",
         "/logout",
         "/pos",
@@ -271,6 +272,16 @@ public sealed class ChatCommandHandler
             // 보낸 사람에게만 세션 상태를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Session: player-id={connection.Session.PlayerId}, state={authState}, spawn={spawnState}");
             // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        if (message.Text.Equals("/health", StringComparison.OrdinalIgnoreCase))
+        {
+            string lifeState = connection.Session.IsAlive ? "alive" : "dead";
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Health: {connection.Session.CurrentHealth}/{connection.Session.MaxHealth}, state={lifeState}");
             return true;
         }
 
@@ -652,7 +663,7 @@ public sealed class ChatCommandHandler
             string displayMonsters = mapMonsters.Length == 0
                 ? "(none)"
                 : string.Join(", ", mapMonsters.Select(monster =>
-                    $"{monster.MonsterType}#{monster.MonsterId}[{monster.AiState}]@{monster.Position}"));
+                    $"{monster.MonsterType}#{monster.MonsterId}[{monster.AiState}, hp={monster.CurrentHealth}/{monster.MaxHealth}]@{monster.Position}"));
             await sendToClientAsync(
                 connection,
                 MessageType.Notice,
