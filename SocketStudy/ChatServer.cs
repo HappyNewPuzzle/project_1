@@ -35,6 +35,9 @@ sealed class ChatServer
     private readonly ClientTaskTracker clientTasks = new();
     private readonly ConcurrentDictionary<long, byte> failedCharacterSaves = new();
     private readonly ServerLifecycle lifecycle = new();
+    private readonly ConnectionAdmissionController admission = new(
+        WorldRules.MaxConcurrentConnections,
+        WorldRules.MaxConnectionsPerIp);
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -143,8 +146,20 @@ sealed class ChatServer
             {
                 // 클라이언트가 접속할 때까지 비동기로 기다렸다가, 접속하면 TcpClient 객체를 받습니다.
                 TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken);
+                IPAddress address = (client.Client.RemoteEndPoint as IPEndPoint)?.Address ??
+                    IPAddress.None;
+                ConnectionAdmissionResult admissionResult = admission.TryAcquire(address);
+                if (!admissionResult.Accepted)
+                {
+                    await RejectClientAsync(client, admissionResult.Status);
+                    continue;
+                }
+
                 // 각 클라이언트를 별도 작업으로 처리해서 다음 클라이언트 접속도 계속 받을 수 있게 합니다.
-                clientTasks.Track(HandleClientAsync(client, cancellationToken));
+                clientTasks.Track(HandleAdmittedClientAsync(
+                    client,
+                    admissionResult.Lease!,
+                    cancellationToken));
             }
         }
         // Ctrl+C로 cancellationToken이 취소되면 accept 대기가 OperationCanceledException을 던질 수 있습니다.
@@ -196,6 +211,46 @@ sealed class ChatServer
             // 서버 종료 완료를 콘솔에 출력합니다.
             AppLogger.Info("[server] Server stopped.");
         }
+    }
+
+    private async Task HandleAdmittedClientAsync(
+        TcpClient client,
+        ConnectionAdmissionLease admissionLease,
+        CancellationToken cancellationToken)
+    {
+        using (admissionLease)
+        {
+            await HandleClientAsync(client, cancellationToken);
+        }
+    }
+
+    private static async Task RejectClientAsync(
+        TcpClient client,
+        ConnectionAdmissionStatus status)
+    {
+        string message = status == ConnectionAdmissionStatus.ServerFull
+            ? "Connection rejected: server is full."
+            : "Connection rejected: too many connections from this IP address.";
+
+        using (client)
+        using (var timeout = new CancellationTokenSource(WorldRules.AdmissionRejectionTimeout))
+        {
+            try
+            {
+                await MessageProtocol.WriteMessageAsync(
+                    client.GetStream(),
+                    MessageType.Notice,
+                    message,
+                    timeout.Token);
+            }
+            catch (Exception ex) when (
+                ex is IOException or ObjectDisposedException or OperationCanceledException)
+            {
+                AppLogger.Error($"[server] Failed to send admission rejection: {ex.Message}");
+            }
+        }
+
+        AppLogger.Info($"[server] {message}");
     }
 
     // 접속한 클라이언트 한 명과 메시지를 주고받는 비동기 메서드입니다.

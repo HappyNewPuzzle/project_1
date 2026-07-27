@@ -13,6 +13,7 @@ RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
 RunServerLifecycleTest();
+RunConnectionAdmissionControllerTest();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
@@ -137,6 +138,59 @@ static void RunServerLifecycleTest()
     {
         throw new InvalidOperationException("Server lifecycle should support cleanup after a startup failure.");
     }
+}
+
+static void RunConnectionAdmissionControllerTest()
+{
+    var admission = new ConnectionAdmissionController(
+        maxConnections: 2,
+        maxConnectionsPerIp: 1);
+    IPAddress firstAddress = IPAddress.Parse("127.0.0.1");
+    IPAddress secondAddress = IPAddress.Parse("127.0.0.2");
+    IPAddress thirdAddress = IPAddress.Parse("127.0.0.3");
+
+    ConnectionAdmissionResult first = admission.TryAcquire(firstAddress);
+    ConnectionAdmissionResult sameIp = admission.TryAcquire(firstAddress);
+    ConnectionAdmissionResult second = admission.TryAcquire(secondAddress);
+    ConnectionAdmissionResult serverFull = admission.TryAcquire(thirdAddress);
+
+    if (!first.Accepted ||
+        sameIp.Status != ConnectionAdmissionStatus.IpLimitReached ||
+        !second.Accepted ||
+        serverFull.Status != ConnectionAdmissionStatus.ServerFull ||
+        admission.ActiveConnections != 2)
+    {
+        throw new InvalidOperationException("Admission control should enforce global and per-IP limits.");
+    }
+
+    first.Lease!.Dispose();
+    first.Lease.Dispose();
+    ConnectionAdmissionResult reacquired = admission.TryAcquire(firstAddress);
+    if (!reacquired.Accepted || admission.ActiveConnections != 2)
+    {
+        throw new InvalidOperationException("Released admission slots should be reusable exactly once.");
+    }
+
+    second.Lease!.Dispose();
+    reacquired.Lease!.Dispose();
+    if (admission.ActiveConnections != 0)
+    {
+        throw new InvalidOperationException("Admission leases should release every active connection.");
+    }
+
+    var normalizedAdmission = new ConnectionAdmissionController(
+        maxConnections: 2,
+        maxConnectionsPerIp: 1);
+    ConnectionAdmissionResult ipv4 = normalizedAdmission.TryAcquire(firstAddress);
+    ConnectionAdmissionResult mappedIpv6 = normalizedAdmission.TryAcquire(
+        firstAddress.MapToIPv6());
+    if (!ipv4.Accepted ||
+        mappedIpv6.Status != ConnectionAdmissionStatus.IpLimitReached)
+    {
+        throw new InvalidOperationException("IPv4 and IPv4-mapped IPv6 should share one IP limit.");
+    }
+
+    ipv4.Lease!.Dispose();
 }
 
 static async Task RunDrainingRejectsGameCommandsTestAsync()

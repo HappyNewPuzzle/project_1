@@ -71,6 +71,12 @@ public static class WorldRules
 
     public static readonly TimeSpan ServerShutdownTimeout = TimeSpan.FromSeconds(10);
 
+    public const int MaxConcurrentConnections = 100;
+
+    public const int MaxConnectionsPerIp = 5;
+
+    public static readonly TimeSpan AdmissionRejectionTimeout = TimeSpan.FromSeconds(1);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

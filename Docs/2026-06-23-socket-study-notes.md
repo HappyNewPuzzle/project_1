@@ -2274,3 +2274,43 @@ Draining 중 차단하는 명령의 예:
 - 테스트는 정상 상태 전이, 중복·역방향 전이 거부, Draining 중 로그인·이동 거부와 `/quit` 허용을 검증합니다.
 
 다음 단계에서는 접속 자체에 admission control을 추가해 최대 동시 접속자 수와 IP별 접속 제한을 적용하고, 과부하 상태에서 명확한 거부 응답을 보내는 구조로 발전할 수 있습니다.
+
+### 다음 단계 16. Admission control과 접속 제한
+
+이번 step에서는 accept된 TCP 연결을 실제 클라이언트 작업으로 등록하기 전에 전체 접속 수와 IP별 접속 수를 검사합니다.
+
+현재 학습용 제한:
+
+```text
+서버 전체 동시 접속: 최대 100개
+동일 IP 동시 접속:  최대 5개
+거부 메시지 전송 제한 시간: 1초
+```
+
+`ConnectionAdmissionController.TryAcquire`는 lock 안에서 검사와 카운트 증가를 한 번에 수행합니다. 따라서 여러 접속이 동시에 들어와도 모두 제한 이하라고 판단한 뒤 한도를 초과하는 경쟁 조건이 생기지 않습니다.
+
+허용된 연결은 `ConnectionAdmissionLease`를 받습니다. `HandleAdmittedClientAsync`가 종료될 때 lease를 dispose하면 전체 카운트와 IP 카운트가 함께 감소합니다. `Dispose`를 여러 번 호출해도 `Interlocked.Exchange`로 실제 반납은 한 번만 실행됩니다.
+
+거부 흐름:
+
+```text
+TCP accept
+-> 전체/IP 제한 검사
+-> 초과 시 protocol Notice 전송
+-> TcpClient 종료
+-> ClientRegistry와 ClientTaskTracker에는 등록하지 않음
+```
+
+전체 한도를 초과하면 `server is full`, IP별 한도를 초과하면 `too many connections from this IP address` 메시지를 보냅니다. 응답을 읽지 않는 클라이언트 때문에 accept loop가 오래 멈추지 않도록 거부 메시지 전송에는 1초 timeout을 적용합니다.
+
+IPv4-mapped IPv6 주소는 IPv4로 정규화합니다. 같은 호스트가 `127.0.0.1`과 `::ffff:127.0.0.1` 표현을 바꿔 IP 제한을 우회하지 못하게 하기 위한 처리입니다.
+
+공부 포인트:
+
+- admission control은 비싼 세션 생성과 인증 처리 전에 수행해야 서버 자원을 보호할 수 있습니다.
+- 검사와 카운트 증가는 하나의 임계 구역에서 원자적으로 처리해야 합니다.
+- lease 패턴은 성공한 획득과 반드시 실행해야 하는 반납을 연결 작업의 수명과 묶습니다.
+- 전체 제한은 서버 메모리와 작업 수를, IP 제한은 단일 출발지의 과도한 연결을 제어합니다.
+- 테스트는 IP 제한, 전체 제한, lease 이중 dispose, 반납된 슬롯 재사용을 검증합니다.
+
+다음 단계에서는 짧은 시간에 반복되는 연결 시도를 제한하는 token bucket 기반 IP별 접속 속도 제한과 임시 차단 정책을 추가할 수 있습니다.
