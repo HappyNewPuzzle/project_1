@@ -2578,3 +2578,63 @@ TCP accept
 - 통합 테스트는 실제 loopback TCP에서 TLS handshake, pin 검증, 암호화 상태와 protocol 왕복을 검증합니다.
 
 다음 단계에서는 인증서 만료 모니터링과 무중단 certificate rotation을 추가하고, 운영 환경에서는 개발용 PFX 자동 생성을 금지하는 설정 계층으로 발전할 수 있습니다.
+
+### 다음 단계 22. 인증서 만료 모니터링과 무중단 rotation
+
+이번 step에서는 서버 인증서를 시작할 때 한 번만 읽는 대신 `TlsServerCertificateProvider`가 관리하도록 변경했습니다.
+
+monitor 정책:
+
+```text
+PFX 변경 검사: 1분 주기
+만료 경고 시작: 만료 30일 전
+같은 인증서 경고 반복: 최대 하루 1회
+손상되거나 유효하지 않은 replacement: 거부하고 현재 인증서 유지
+```
+
+provider는 PFX의 수정 시각과 파일 크기를 확인합니다. 변경된 파일을 발견하면 새 인증서를 별도로 로드하고 다음 항목을 검증합니다.
+
+- private key 포함
+- 현재 시각이 `NotBefore` 이후
+- 현재 시각이 `NotAfter` 이전
+- 기존 인증서와 다른 thumbprint
+
+검증에 성공하면 현재 인증서를 교체합니다. 이미 연결된 `SslStream`은 기존 인증서로 수립된 TLS session을 계속 사용하고, 교체 이후의 새 handshake만 새 인증서를 사용합니다. 이전 인증서 객체는 서버 종료까지 보존해 진행 중인 handshake와 기존 연결의 native TLS 참조가 안전하게 유지되도록 합니다.
+
+잘못된 PFX를 배포하면 reload 오류를 기록하고 기존 인증서를 계속 제공합니다. 파일 identity를 성공 상태로 갱신하지 않으므로 다음 monitor tick에서 다시 로드를 시도합니다.
+
+Production 안전 정책:
+
+```text
+SOCKETSTUDY_ENVIRONMENT=Production
+SOCKETSTUDY_TLS_PFX=<운영 PFX 경로>
+SOCKETSTUDY_TLS_PASSWORD=<PFX 비밀번호>
+```
+
+Production에서는 `SOCKETSTUDY_TLS_PFX`가 없으면 서버 시작을 거부합니다. 개발용 self-signed 인증서를 조용히 생성해 운영 서버가 잘못된 인증서로 시작하는 일을 막습니다.
+
+pinning을 사용하는 클라이언트의 무중단 rotation에는 신뢰 overlap 기간이 필요합니다. `SOCKETSTUDY_TLS_CERT`는 운영체제의 path separator로 여러 공개 인증서 경로를 받을 수 있습니다. Windows에서는 세미콜론을 사용합니다.
+
+```text
+SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
+```
+
+권장 rotation 순서:
+
+1. 다음 인증서의 공개 CER를 클라이언트 pin set에 먼저 배포합니다.
+2. 모든 클라이언트가 current와 next를 신뢰하는 overlap 기간을 둡니다.
+3. 서버 PFX 파일을 next 인증서로 원자적으로 교체합니다.
+4. monitor가 reload 성공과 새 thumbprint를 기록했는지 확인합니다.
+5. 충분한 전환 기간 후 클라이언트 pin set에서 old 인증서를 제거합니다.
+
+서버 PFX부터 먼저 교체하면 아직 next pin을 받지 못한 클라이언트가 접속하지 못합니다. pinning은 강한 검증을 제공하는 대신 인증서 배포 순서를 운영자가 책임져야 합니다.
+
+공부 포인트:
+
+- certificate rotation은 기존 연결을 끊지 않고 새 연결에만 새 인증서를 적용할 수 있습니다.
+- 새 파일은 current를 교체하기 전에 완전히 로드하고 검증해야 합니다.
+- 만료 경고는 충분히 일찍 시작하되 매 tick 반복되어 실제 장애 로그를 묻지 않아야 합니다.
+- current/next overlap pin은 강한 pinning을 유지하면서 무중단 전환을 가능하게 합니다.
+- 테스트는 만료 경고, 정상 PFX reload, 손상된 PFX 거부, thumbprint 유지, Production 시작 거부와 overlap pin 검증을 수행합니다.
+
+다음 단계에서는 환경 변수를 흩어 읽는 방식을 strongly typed 서버 설정으로 통합하고, 시작 시 모든 설정을 한 번에 검증·출력하는 configuration 계층을 추가할 수 있습니다.

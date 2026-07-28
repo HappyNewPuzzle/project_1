@@ -15,44 +15,54 @@ public static class TlsCertificateManager
     public static string DefaultCertificatePath =>
         Path.Combine(DefaultDirectory, "server.cer");
 
-    public static X509Certificate2 LoadOrCreateServerCertificate()
+    public static TlsServerCertificateProvider CreateServerCertificateProvider(
+        Action<string>? logInfo = null,
+        Action<string>? logError = null)
     {
-        string pfxPath = Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PFX") ??
-            DefaultPfxPath;
+        string? configuredPfxPath =
+            Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PFX");
+        bool isProduction = string.Equals(
+            Environment.GetEnvironmentVariable("SOCKETSTUDY_ENVIRONMENT"),
+            "Production",
+            StringComparison.OrdinalIgnoreCase);
+        if (isProduction && string.IsNullOrWhiteSpace(configuredPfxPath))
+        {
+            throw new InvalidOperationException(
+                "Production requires SOCKETSTUDY_TLS_PFX and does not generate a development certificate.");
+        }
+
+        string pfxPath = configuredPfxPath ?? DefaultPfxPath;
         string password = Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PASSWORD") ??
             DevelopmentPassword;
         if (!File.Exists(pfxPath))
         {
-            if (Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PFX") is not null)
+            if (isProduction || configuredPfxPath is not null)
             {
                 throw new FileNotFoundException("Configured TLS PFX file was not found.", pfxPath);
             }
 
-            CreateDevelopmentCertificate(
-                pfxPath,
-                DefaultCertificatePath,
-                password);
+            CreateDevelopmentCertificate(pfxPath, DefaultCertificatePath, password);
+            logInfo?.Invoke($"[server] Development TLS certificate created: {pfxPath}");
         }
 
-        return new X509Certificate2(
+        return new TlsServerCertificateProvider(
             pfxPath,
             password,
-            X509KeyStorageFlags.DefaultKeySet);
+            WorldRules.TlsCertificateExpiryWarningThreshold,
+            logInfo: logInfo,
+            logError: logError);
     }
 
-    public static X509Certificate2 LoadPinnedServerCertificate()
+    public static TlsPinnedCertificateSet LoadPinnedServerCertificates()
     {
-        string certificatePath =
-            Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_CERT") ??
-            DefaultCertificatePath;
-        if (!File.Exists(certificatePath))
-        {
-            throw new FileNotFoundException(
-                "Pinned server certificate was not found. Start the local server first or set SOCKETSTUDY_TLS_CERT.",
-                certificatePath);
-        }
-
-        return new X509Certificate2(certificatePath);
+        string? configuredPaths =
+            Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_CERT");
+        string[] paths = string.IsNullOrWhiteSpace(configuredPaths)
+            ? [DefaultCertificatePath]
+            : configuredPaths.Split(
+                Path.PathSeparator,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return new TlsPinnedCertificateSet(paths);
     }
 
     public static void CreateDevelopmentCertificate(

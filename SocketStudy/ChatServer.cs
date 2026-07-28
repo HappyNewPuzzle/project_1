@@ -55,8 +55,11 @@ sealed class ChatServer
         Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
     private readonly PasswordHasher passwordHasher = new();
     private readonly SessionTokenStore sessionTokens = new(WorldRules.SessionTokenLifetime);
-    private readonly X509Certificate2 tlsCertificate =
-        TlsCertificateManager.LoadOrCreateServerCertificate();
+    private readonly TlsServerCertificateProvider tlsCertificates =
+        TlsCertificateManager.CreateServerCertificateProvider(
+            AppLogger.Info,
+            AppLogger.Error);
+    private readonly TlsCertificateMonitorLoop tlsCertificateMonitor;
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -67,6 +70,9 @@ sealed class ChatServer
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
         characterSaves = new CharacterSaveService(characters);
+        tlsCertificateMonitor = new TlsCertificateMonitorLoop(
+            tlsCertificates,
+            WorldRules.TlsCertificateCheckInterval);
         characterAutosaveLoop = new CharacterAutosaveLoop(
             clients.SnapshotAuthenticatedSessions,
             characterSaves,
@@ -146,6 +152,7 @@ sealed class ChatServer
         Task worldTickTask = worldTickLoop.RunAsync(worldTickCancellation.Token);
         Task combatEventTask = combatEventDispatchLoop.RunAsync(worldTickCancellation.Token);
         Task autosaveTask = characterAutosaveLoop.RunAsync(worldTickCancellation.Token);
+        Task tlsMonitorTask = tlsCertificateMonitor.RunAsync(worldTickCancellation.Token);
 
         // 서버 종료 시 listener를 반드시 닫기 위해 try/finally를 사용합니다.
         try
@@ -244,8 +251,9 @@ sealed class ChatServer
             await worldTickTask;
             await combatEventTask;
             await autosaveTask;
+            await tlsMonitorTask;
             LogSaveFailureSummary();
-            tlsCertificate.Dispose();
+            tlsCertificates.Dispose();
             if (lifecycle.MarkStopped())
             {
                 AppLogger.Info("[server] State changed to Stopped.");
@@ -295,7 +303,7 @@ sealed class ChatServer
             await stream.AuthenticateAsServerAsync(
                 new SslServerAuthenticationOptions
                 {
-                    ServerCertificate = tlsCertificate,
+                    ServerCertificate = tlsCertificates.Current,
                     ClientCertificateRequired = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck

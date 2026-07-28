@@ -95,6 +95,10 @@ public static class WorldRules
 
     public static readonly TimeSpan TlsHandshakeTimeout = TimeSpan.FromSeconds(10);
 
+    public static readonly TimeSpan TlsCertificateCheckInterval = TimeSpan.FromMinutes(1);
+
+    public static readonly TimeSpan TlsCertificateExpiryWarningThreshold = TimeSpan.FromDays(30);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

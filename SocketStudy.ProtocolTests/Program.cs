@@ -13,6 +13,7 @@ await RunInvalidMessageTypeTestAsync();
 await RunIncompleteBodyTestAsync();
 await RunTooLargeLengthTestAsync();
 await RunTlsProtocolRoundTripTestAsync();
+RunTlsCertificateRotationTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -157,6 +158,14 @@ static async Task RunTlsProtocolRoundTripTestAsync()
             throw new InvalidOperationException("TLS pin validation should reject a different certificate.");
         }
 
+        using var overlapPins = new TlsPinnedCertificateSet(
+            [certificatePath, otherCertificatePath]);
+        if (!overlapPins.Validate(serverCertificate, SslPolicyErrors.None) ||
+            !overlapPins.Validate(otherCertificate, SslPolicyErrors.None))
+        {
+            throw new InvalidOperationException("TLS overlap pin set should trust current and next certificates.");
+        }
+
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         Task serverTask = Task.Run(async () =>
@@ -219,6 +228,94 @@ static async Task RunTlsProtocolRoundTripTestAsync()
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+}
+
+static void RunTlsCertificateRotationTest()
+{
+    string directory = Path.Combine(
+        Path.GetTempPath(),
+        $"socket-study-tls-rotation-{Guid.NewGuid():N}");
+    string pfxPath = Path.Combine(directory, "server.pfx");
+    string certificatePath = Path.Combine(directory, "server.cer");
+    string replacementPfxPath = Path.Combine(directory, "replacement.pfx");
+    string replacementCertificatePath = Path.Combine(directory, "replacement.cer");
+    var errors = new List<string>();
+
+    try
+    {
+        TlsCertificateManager.CreateDevelopmentCertificate(pfxPath, certificatePath);
+        using var provider = new TlsServerCertificateProvider(
+            pfxPath,
+            TlsCertificateManager.DevelopmentPassword,
+            TimeSpan.FromDays(400),
+            logError: errors.Add);
+        string originalThumbprint = provider.Thumbprint;
+        if (errors.Count == 0)
+        {
+            throw new InvalidOperationException("Certificate provider should warn before configured expiry.");
+        }
+
+        int warningCount = errors.Count;
+        provider.RefreshIfChanged();
+        if (errors.Count != warningCount)
+        {
+            throw new InvalidOperationException("Certificate expiry warning should be throttled.");
+        }
+
+        TlsCertificateManager.CreateDevelopmentCertificate(
+            replacementPfxPath,
+            replacementCertificatePath);
+        File.Copy(replacementPfxPath, pfxPath, overwrite: true);
+        File.SetLastWriteTimeUtc(pfxPath, DateTime.UtcNow.AddSeconds(2));
+        if (!provider.RefreshIfChanged() ||
+            provider.Thumbprint == originalThumbprint)
+        {
+            throw new InvalidOperationException("Certificate provider should hot-reload a replacement PFX.");
+        }
+
+        string rotatedThumbprint = provider.Thumbprint;
+        File.WriteAllText(pfxPath, "invalid pfx");
+        File.SetLastWriteTimeUtc(pfxPath, DateTime.UtcNow.AddSeconds(4));
+        if (provider.RefreshIfChanged() ||
+            provider.Thumbprint != rotatedThumbprint)
+        {
+            throw new InvalidOperationException("Invalid certificate rotation should preserve the current certificate.");
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    string? previousEnvironment =
+        Environment.GetEnvironmentVariable("SOCKETSTUDY_ENVIRONMENT");
+    string? previousPfx =
+        Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PFX");
+    try
+    {
+        Environment.SetEnvironmentVariable("SOCKETSTUDY_ENVIRONMENT", "Production");
+        Environment.SetEnvironmentVariable("SOCKETSTUDY_TLS_PFX", null);
+        try
+        {
+            using TlsServerCertificateProvider _ =
+                TlsCertificateManager.CreateServerCertificateProvider();
+            throw new InvalidOperationException("Production should not generate a development certificate.");
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Production requires SOCKETSTUDY_TLS_PFX"))
+        {
+        }
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(
+            "SOCKETSTUDY_ENVIRONMENT",
+            previousEnvironment);
+        Environment.SetEnvironmentVariable("SOCKETSTUDY_TLS_PFX", previousPfx);
     }
 }
 

@@ -19,16 +19,13 @@ sealed class ChatClient
         await client.ConnectAsync(host, port);
 
         await using NetworkStream networkStream = client.GetStream();
-        using X509Certificate2 pinnedCertificate =
-            TlsCertificateManager.LoadPinnedServerCertificate();
+        using TlsPinnedCertificateSet pinnedCertificates =
+            TlsCertificateManager.LoadPinnedServerCertificates();
         await using var stream = new SslStream(
             networkStream,
             leaveInnerStreamOpen: false,
             (_, certificate, _, policyErrors) =>
-                TlsCertificateValidator.ValidatePinnedServer(
-                    certificate,
-                    policyErrors,
-                    pinnedCertificate));
+                pinnedCertificates.Validate(certificate, policyErrors));
         using var tlsCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         tlsCancellation.CancelAfter(WorldRules.TlsHandshakeTimeout);
