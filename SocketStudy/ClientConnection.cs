@@ -16,13 +16,13 @@ public sealed class ClientConnection
     public PlayerSession Session { get; } = new();
 
     // 클라이언트에게 바이트를 보내기 위한 network stream입니다.
-    private readonly NetworkStream stream;
+    private readonly Stream stream;
 
     // 같은 클라이언트에게 동시에 여러 메시지를 쓰지 않도록 막는 비동기 lock입니다.
     private readonly SemaphoreSlim sendLock = new(1, 1);
 
     // 클라이언트 연결 정보를 초기화합니다.
-    public ClientConnection(string name, TcpClient client, NetworkStream stream)
+    public ClientConnection(string name, TcpClient client, Stream stream)
     {
         // 클라이언트 이름을 저장합니다.
         Name = name;

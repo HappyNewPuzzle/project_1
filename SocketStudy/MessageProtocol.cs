@@ -1,4 +1,3 @@
-using System.Net.Sockets;
 using System.Text;
 
 // TCP 바이트 흐름 위에 "메시지"라는 단위를 얹기 위한 protocol helper입니다.
@@ -18,7 +17,7 @@ public static class MessageProtocol
 
     // 문자열 메시지를 "4바이트 길이 + UTF-8 본문" 형식으로 stream에 씁니다.
     public static async Task WriteMessageAsync(
-        NetworkStream stream,
+        Stream stream,
         MessageType type,
         string message,
         CancellationToken cancellationToken = default)
@@ -49,7 +48,7 @@ public static class MessageProtocol
 
     // stream에서 "4바이트 길이 + UTF-8 본문" 형식의 메시지 하나를 읽습니다.
     public static async Task<NetworkMessage?> ReadMessageAsync(
-        NetworkStream stream,
+        Stream stream,
         CancellationToken cancellationToken = default)
     {
         // 5바이트 header를 담을 배열을 준비합니다.
@@ -98,7 +97,7 @@ public static class MessageProtocol
 
     // 요청한 크기만큼 정확히 읽거나, 읽기 시작 전에 연결 종료를 감지합니다.
     private static async Task<bool> ReadExactOrEndAsync(
-        NetworkStream stream,
+        Stream stream,
         byte[] buffer,
         CancellationToken cancellationToken)
     {

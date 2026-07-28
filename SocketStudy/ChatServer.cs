@@ -1,5 +1,8 @@
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Collections.Concurrent;
 
 // TCP 채팅 서버의 실행과 클라이언트 관리를 담당합니다.
@@ -52,6 +55,8 @@ sealed class ChatServer
         Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
     private readonly PasswordHasher passwordHasher = new();
     private readonly SessionTokenStore sessionTokens = new(WorldRules.SessionTokenLifetime);
+    private readonly X509Certificate2 tlsCertificate =
+        TlsCertificateManager.LoadOrCreateServerCertificate();
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -176,7 +181,7 @@ sealed class ChatServer
                         ConnectionRateLimitStatus.TemporarilyBlocked
                             ? $"Connection rejected: IP temporarily blocked. Retry after {retryAfterSeconds} seconds."
                             : $"Connection rejected: rate limit exceeded. Retry after {retryAfterSeconds} seconds.";
-                    await RejectClientAsync(client, rateLimitMessage);
+                    RejectClient(client, rateLimitMessage);
                     continue;
                 }
 
@@ -187,7 +192,7 @@ sealed class ChatServer
                         admissionResult.Status == ConnectionAdmissionStatus.ServerFull
                             ? "Connection rejected: server is full."
                             : "Connection rejected: too many connections from this IP address.";
-                    await RejectClientAsync(client, admissionMessage);
+                    RejectClient(client, admissionMessage);
                     continue;
                 }
 
@@ -240,6 +245,7 @@ sealed class ChatServer
             await combatEventTask;
             await autosaveTask;
             LogSaveFailureSummary();
+            tlsCertificate.Dispose();
             if (lifecycle.MarkStopped())
             {
                 AppLogger.Info("[server] State changed to Stopped.");
@@ -260,28 +266,11 @@ sealed class ChatServer
         }
     }
 
-    private static async Task RejectClientAsync(
+    private static void RejectClient(
         TcpClient client,
         string message)
     {
-        using (client)
-        using (var timeout = new CancellationTokenSource(WorldRules.AdmissionRejectionTimeout))
-        {
-            try
-            {
-                await MessageProtocol.WriteMessageAsync(
-                    client.GetStream(),
-                    MessageType.Notice,
-                    message,
-                    timeout.Token);
-            }
-            catch (Exception ex) when (
-                ex is IOException or ObjectDisposedException or OperationCanceledException)
-            {
-                AppLogger.Error($"[server] Failed to send admission rejection: {ex.Message}");
-            }
-        }
-
+        client.Dispose();
         AppLogger.Info($"[server] {message}");
     }
 
@@ -295,8 +284,31 @@ sealed class ChatServer
         // 클라이언트가 접속했다는 사실을 서버 콘솔에 출력합니다.
         AppLogger.Info($"[server] Client connected: {clientName}");
 
-        // TcpClient에서 실제 데이터를 읽고 쓰는 NetworkStream을 가져옵니다.
-        await using NetworkStream stream = client.GetStream();
+        // TCP stream 위에 TLS 암호화 계층을 구성합니다.
+        await using NetworkStream networkStream = client.GetStream();
+        await using var stream = new SslStream(networkStream, leaveInnerStreamOpen: false);
+        using var tlsCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        tlsCancellation.CancelAfter(WorldRules.TlsHandshakeTimeout);
+        try
+        {
+            await stream.AuthenticateAsServerAsync(
+                new SslServerAuthenticationOptions
+                {
+                    ServerCertificate = tlsCertificate,
+                    ClientCertificateRequired = false,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+                },
+                tlsCancellation.Token);
+        }
+        catch (Exception ex) when (
+            ex is AuthenticationException or IOException or OperationCanceledException)
+        {
+            AppLogger.Error($"[server] TLS handshake failed for {clientName}: {ex.Message}");
+            client.Close();
+            return;
+        }
 
         // 서버가 접속자 목록에서 관리할 클라이언트 연결 정보를 만듭니다.
         var connection = new ClientConnection(clientName, client, stream);

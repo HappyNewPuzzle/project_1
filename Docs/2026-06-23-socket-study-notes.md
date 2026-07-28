@@ -2284,7 +2284,7 @@ Draining 중 차단하는 명령의 예:
 ```text
 서버 전체 동시 접속: 최대 100개
 동일 IP 동시 접속:  최대 5개
-거부 메시지 전송 제한 시간: 1초
+제한 초과 연결: TLS handshake 전에 즉시 종료
 ```
 
 `ConnectionAdmissionController.TryAcquire`는 lock 안에서 검사와 카운트 증가를 한 번에 수행합니다. 따라서 여러 접속이 동시에 들어와도 모두 제한 이하라고 판단한 뒤 한도를 초과하는 경쟁 조건이 생기지 않습니다.
@@ -2301,7 +2301,7 @@ TCP accept
 -> ClientRegistry와 ClientTaskTracker에는 등록하지 않음
 ```
 
-전체 한도를 초과하면 `server is full`, IP별 한도를 초과하면 `too many connections from this IP address` 메시지를 보냅니다. 응답을 읽지 않는 클라이언트 때문에 accept loop가 오래 멈추지 않도록 거부 메시지 전송에는 1초 timeout을 적용합니다.
+전체 한도나 IP별 한도를 초과한 연결은 TLS handshake 전에 즉시 종료합니다. TLS 적용 전에는 이유를 담은 protocol Notice를 보냈지만, 암호화되지 않은 메시지와 TLS handshake를 섞을 수 없고 공격자의 비싼 handshake 요청도 제한해야 하므로 현재 정책에서는 서버 로그에만 거부 이유를 남깁니다.
 
 IPv4-mapped IPv6 주소는 IPv4로 정규화합니다. 같은 호스트가 `127.0.0.1`과 `::ffff:127.0.0.1` 표현을 바꿔 IP 제한을 우회하지 못하게 하기 위한 처리입니다.
 
@@ -2504,3 +2504,77 @@ token 수명: 30분
 현재 `SessionTokenStore`는 단일 서버 프로세스 메모리에 있습니다. 서버 재시작 시 모든 token이 사라지며, 여러 서버 인스턴스가 token을 공유할 수도 없습니다. 이후 Redis 같은 공유 저장소로 교체할 수 있습니다.
 
 중요하게도 TCP 전송은 아직 평문입니다. 다음 단계에서는 `SslStream`과 서버 인증서를 적용하고, 클라이언트가 인증서 chain과 서버 이름을 검증하도록 만들어 비밀번호와 token의 전송 구간을 암호화합니다.
+
+### 다음 단계 21. SslStream TLS 전송 암호화
+
+이번 step에서는 `NetworkStream` 위에 `SslStream`을 추가해 protocol header와 body 전체를 TLS로 암호화합니다. 비밀번호, session token, 채팅과 게임 명령이 더 이상 평문 TCP payload로 전송되지 않습니다.
+
+서버 연결 계층:
+
+```text
+TcpListener
+-> TcpClient
+-> NetworkStream
+-> SslStream server handshake
+-> MessageProtocol
+-> ChatCommandHandler
+```
+
+클라이언트도 TCP 연결 직후 TLS client handshake를 완료한 뒤에만 nickname과 사용자 입력을 보냅니다. 기존 `MessageProtocol`과 `ClientConnection`은 `NetworkStream` 대신 기반 `Stream`을 받도록 바꿨기 때문에 framing과 명령 코드는 TLS 구현 세부 사항을 알 필요가 없습니다.
+
+지원 protocol:
+
+```text
+TLS 1.2
+TLS 1.3
+handshake timeout: 10초
+```
+
+학습용 인증서:
+
+- 첫 서버 실행 시 `Data/tls/server.pfx` private-key 인증서를 생성합니다.
+- 클라이언트 pinning용 공개 인증서는 `Data/tls/server.cer`에 생성합니다.
+- SAN에는 `localhost`, 현재 machine name, `127.0.0.1`, `::1`을 넣습니다.
+- 유효 기간은 생성 시점부터 1년입니다.
+- PFX와 CER은 `.gitignore`에 포함해 저장소에 올리지 않습니다.
+
+클라이언트 검증은 두 조건을 모두 요구합니다.
+
+1. 접속할 때 사용한 host가 인증서 SAN과 일치해야 합니다.
+2. 서버가 제시한 인증서 raw bytes가 pin된 `server.cer`와 고정 시간 비교에서 일치해야 합니다.
+
+self-signed 개발 인증서는 공인 CA chain을 만들 수 없으므로 chain 오류는 정확한 pin과 host 검증이 성공한 경우에만 허용합니다. 다른 인증서나 이름 불일치는 거부합니다.
+
+외부 인증서 설정:
+
+```text
+서버:
+SOCKETSTUDY_TLS_PFX=<server.pfx 경로>
+SOCKETSTUDY_TLS_PASSWORD=<PFX 비밀번호>
+
+클라이언트:
+SOCKETSTUDY_TLS_CERT=<pin할 공개 인증서 경로>
+```
+
+원격 PC에서는 `server.cer`만 안전한 별도 경로로 복사해야 합니다. private key가 들어 있는 `server.pfx`는 서버 밖으로 복사하면 안 됩니다. 접속 host는 인증서 SAN에 포함된 machine name이어야 하며, 실제 서비스에서는 서비스 DNS 이름이 들어간 CA 발급 인증서를 사용해야 합니다.
+
+Admission과 TLS 순서:
+
+```text
+TCP accept
+-> IP rate limit / 동시 접속 제한
+-> 허용된 연결만 TLS handshake
+```
+
+공격자가 비싼 TLS handshake를 무제한 유발하지 못하도록 admission 검사는 TLS보다 먼저 수행합니다. 따라서 rate limit이나 접속 수 제한에서 거부된 연결은 암호화되지 않은 Notice를 보내지 않고 즉시 닫습니다. 클라이언트에는 TLS handshake 실패 또는 연결 종료로 보입니다.
+
+공부 포인트:
+
+- TLS는 application protocol을 교체하지 않고 그 아래 stream을 암호화할 수 있습니다.
+- 암호화만 하고 인증서를 검증하지 않으면 중간자 공격을 막을 수 없습니다.
+- pinning은 정확한 인증서를 강하게 확인하지만 인증서 교체 시 클라이언트 pin도 배포해야 합니다.
+- handshake timeout은 데이터를 보내지 않는 연결이 admission slot을 계속 점유하지 못하게 합니다.
+- private key 파일과 비밀번호는 source control에 포함하면 안 됩니다.
+- 통합 테스트는 실제 loopback TCP에서 TLS handshake, pin 검증, 암호화 상태와 protocol 왕복을 검증합니다.
+
+다음 단계에서는 인증서 만료 모니터링과 무중단 certificate rotation을 추가하고, 운영 환경에서는 개발용 PFX 자동 생성을 금지하는 설정 계층으로 발전할 수 있습니다.

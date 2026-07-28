@@ -32,12 +32,16 @@ cd SocketStudy
 dotnet run -- server
 ```
 
+첫 서버 실행 시 `Data/tls/server.pfx`와 pinning용 `Data/tls/server.cer` 개발 인증서가 자동 생성됩니다. 클라이언트는 같은 공개 인증서를 pinning하여 TLS로 접속합니다.
+
 두 번째 터미널에서 클라이언트를 실행합니다.
 
 ```powershell
 cd SocketStudy
 dotnet run -- client
 ```
+
+외부 인증서를 사용하려면 서버에 `SOCKETSTUDY_TLS_PFX`, `SOCKETSTUDY_TLS_PASSWORD`를 설정하고 클라이언트에는 복사한 공개 인증서 경로를 `SOCKETSTUDY_TLS_CERT`로 설정합니다.
 
 세 번째 터미널에서 다른 클라이언트를 하나 더 실행하면 채팅 broadcast를 확인할 수 있습니다.
 

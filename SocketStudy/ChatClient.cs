@@ -1,4 +1,7 @@
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 
 // TCP 채팅 클라이언트의 연결, 입력, 수신 루프를 담당합니다.
 sealed class ChatClient
@@ -15,15 +18,35 @@ sealed class ChatClient
         // 지정한 host와 port로 TCP 연결을 시도합니다.
         await client.ConnectAsync(host, port);
 
-        // 서버에 연결되었다는 사실을 클라이언트 콘솔에 출력합니다.
-        Console.WriteLine($"[client] Connected to {host}:{port}");
+        await using NetworkStream networkStream = client.GetStream();
+        using X509Certificate2 pinnedCertificate =
+            TlsCertificateManager.LoadPinnedServerCertificate();
+        await using var stream = new SslStream(
+            networkStream,
+            leaveInnerStreamOpen: false,
+            (_, certificate, _, policyErrors) =>
+                TlsCertificateValidator.ValidatePinnedServer(
+                    certificate,
+                    policyErrors,
+                    pinnedCertificate));
+        using var tlsCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        tlsCancellation.CancelAfter(WorldRules.TlsHandshakeTimeout);
+        await stream.AuthenticateAsClientAsync(
+            new SslClientAuthenticationOptions
+            {
+                TargetHost = host,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+            },
+            tlsCancellation.Token);
+
+        // 서버에 TLS로 연결되었다는 사실을 클라이언트 콘솔에 출력합니다.
+        Console.WriteLine($"[client] TLS connected to {host}:{port}");
         // 사용자가 메시지를 입력하는 방법과 종료 방법을 안내합니다.
         Console.WriteLine("[client] Type a message and press Enter. Empty line exits.");
         // 사용자가 명령 목록을 바로 찾을 수 있도록 안내합니다.
         Console.WriteLine("[client] Type /help to see available commands.");
-
-        // TcpClient에서 실제 데이터를 읽고 쓰는 NetworkStream을 가져옵니다.
-        await using NetworkStream stream = client.GetStream();
 
         // 서버가 보내는 chat과 notice를 사용자의 입력과 별개로 계속 읽는 작업을 시작합니다.
         Task receiveTask = ReceiveServerMessagesAsync(stream, cancellationToken);
@@ -72,7 +95,7 @@ sealed class ChatClient
     }
 
     // 클라이언트가 서버에서 오는 메시지를 계속 읽는 메서드입니다.
-    private static async Task ReceiveServerMessagesAsync(NetworkStream stream, CancellationToken cancellationToken)
+    private static async Task ReceiveServerMessagesAsync(Stream stream, CancellationToken cancellationToken)
     {
         // 네트워크 수신은 실패할 수 있으므로 예외 처리를 준비합니다.
         try

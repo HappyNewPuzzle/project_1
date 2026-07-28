@@ -1,5 +1,8 @@
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 
 await RunProtocolRoundTripTestAsync(MessageType.Chat, "alice: hello");
 await RunProtocolRoundTripTestAsync(MessageType.Notice, "Welcome.");
@@ -9,6 +12,7 @@ await RunProtocolRoundTripTestAsync(MessageType.Chat, "한글 메시지와 emoji
 await RunInvalidMessageTypeTestAsync();
 await RunIncompleteBodyTestAsync();
 await RunTooLargeLengthTestAsync();
+await RunTlsProtocolRoundTripTestAsync();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -121,6 +125,102 @@ await RunDuplicateNameCommandTestAsync();
 await RunInvalidNameCommandTestAsync();
 
 Console.WriteLine("All socket study tests passed.");
+
+static async Task RunTlsProtocolRoundTripTestAsync()
+{
+    string directory = Path.Combine(
+        Path.GetTempPath(),
+        $"socket-study-tls-{Guid.NewGuid():N}");
+    string pfxPath = Path.Combine(directory, "server.pfx");
+    string certificatePath = Path.Combine(directory, "server.cer");
+    string otherPfxPath = Path.Combine(directory, "other.pfx");
+    string otherCertificatePath = Path.Combine(directory, "other.cer");
+    var listener = new TcpListener(IPAddress.Loopback, 0);
+
+    try
+    {
+        TlsCertificateManager.CreateDevelopmentCertificate(pfxPath, certificatePath);
+        TlsCertificateManager.CreateDevelopmentCertificate(
+            otherPfxPath,
+            otherCertificatePath);
+        using var serverCertificate = new X509Certificate2(
+            pfxPath,
+            TlsCertificateManager.DevelopmentPassword,
+            X509KeyStorageFlags.DefaultKeySet);
+        using var pinnedCertificate = new X509Certificate2(certificatePath);
+        using var otherCertificate = new X509Certificate2(otherCertificatePath);
+        if (TlsCertificateValidator.ValidatePinnedServer(
+            serverCertificate,
+            SslPolicyErrors.None,
+            otherCertificate))
+        {
+            throw new InvalidOperationException("TLS pin validation should reject a different certificate.");
+        }
+
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        Task serverTask = Task.Run(async () =>
+        {
+            using TcpClient accepted = await listener.AcceptTcpClientAsync();
+            await using var serverTls = new SslStream(accepted.GetStream(), false);
+            await serverTls.AuthenticateAsServerAsync(
+                serverCertificate,
+                clientCertificateRequired: false,
+                SslProtocols.Tls12 | SslProtocols.Tls13,
+                checkCertificateRevocation: false);
+            NetworkMessage? request = await MessageProtocol.ReadMessageAsync(serverTls);
+            if (request?.Text != "encrypted hello")
+            {
+                throw new InvalidOperationException("TLS server did not receive the protocol message.");
+            }
+
+            await MessageProtocol.WriteMessageAsync(
+                serverTls,
+                MessageType.Notice,
+                "encrypted response");
+        });
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        await using var clientTls = new SslStream(
+            client.GetStream(),
+            false,
+            (_, certificate, _, errors) =>
+                TlsCertificateValidator.ValidatePinnedServer(
+                    certificate,
+                    errors,
+                    pinnedCertificate));
+        await clientTls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+        {
+            TargetHost = "localhost",
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+        });
+
+        await MessageProtocol.WriteMessageAsync(
+            clientTls,
+            MessageType.Command,
+            "encrypted hello");
+        NetworkMessage? response = await MessageProtocol.ReadMessageAsync(clientTls);
+        if (response?.Type != MessageType.Notice ||
+            response.Text != "encrypted response" ||
+            !clientTls.IsEncrypted ||
+            !clientTls.IsAuthenticated)
+        {
+            throw new InvalidOperationException("TLS client should authenticate and exchange encrypted protocol messages.");
+        }
+
+        await serverTask;
+    }
+    finally
+    {
+        listener.Stop();
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
 
 static void RunServerLifecycleTest()
 {

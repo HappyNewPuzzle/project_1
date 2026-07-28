@@ -19,3 +19,5 @@ Data/*.tmp
 Data/*.db
 Data/*.db-shm
 Data/*.db-wal
+Data/tls/*.pfx
+Data/tls/*.cer
