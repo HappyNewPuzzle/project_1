@@ -87,6 +87,12 @@ public static class WorldRules
 
     public static readonly TimeSpan ConnectionRateLimitIdleRetention = TimeSpan.FromMinutes(10);
 
+    public static readonly TimeSpan AuthenticationBackoffBaseDelay = TimeSpan.FromSeconds(1);
+
+    public static readonly TimeSpan AuthenticationBackoffMaxDelay = TimeSpan.FromSeconds(30);
+
+    public static readonly TimeSpan AuthenticationFailureIdleRetention = TimeSpan.FromMinutes(10);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

@@ -1,3 +1,5 @@
+using System.Net;
+
 // slash command 해석과 처리를 담당합니다.
 public sealed class ChatCommandHandler
 {
@@ -155,6 +157,7 @@ public sealed class ChatCommandHandler
     private readonly ICharacterRepository characters;
     private readonly CharacterSaveService characterSaves;
     private readonly Func<ServerLifecycleState> getServerState;
+    private readonly AuthenticationAttemptLimiter authenticationAttempts;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -181,7 +184,8 @@ public sealed class ChatCommandHandler
         GroundLootRegistry groundLoot,
         ICharacterRepository characters,
         CharacterSaveService characterSaves,
-        Func<ServerLifecycleState> getServerState)
+        Func<ServerLifecycleState> getServerState,
+        AuthenticationAttemptLimiter authenticationAttempts)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -222,6 +226,7 @@ public sealed class ChatCommandHandler
         this.characters = characters;
         this.characterSaves = characterSaves;
         this.getServerState = getServerState;
+        this.authenticationAttempts = authenticationAttempts;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -491,6 +496,27 @@ public sealed class ChatCommandHandler
         // /login 명령은 학습용으로 플레이어 ID를 세션에 연결합니다.
         if (message.Text.StartsWith("/login ", StringComparison.OrdinalIgnoreCase))
         {
+            string rawPlayerId = message.Text["/login ".Length..].Trim();
+            bool hasValidPlayerId = long.TryParse(rawPlayerId, out long playerId) &&
+                playerId > PlayerSession.AnonymousPlayerId;
+            string? accountKey = hasValidPlayerId ? playerId.ToString() : null;
+            IPAddress remoteAddress =
+                (connection.Client.Client.RemoteEndPoint as IPEndPoint)?.Address ??
+                IPAddress.None;
+            AuthenticationAttemptResult attempt =
+                authenticationAttempts.Check(remoteAddress, accountKey);
+            if (!attempt.Allowed)
+            {
+                int retryAfterSeconds = Math.Max(
+                    1,
+                    (int)Math.Ceiling(attempt.RetryAfter.TotalSeconds));
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    $"Login temporarily limited. Retry after {retryAfterSeconds} seconds.");
+                return true;
+            }
+
             // 월드에 스폰된 세션은 플레이어 정체성을 바꿀 수 없습니다.
             if (connection.Session.IsSpawned)
             {
@@ -509,11 +535,10 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            // 명령 뒤쪽의 플레이어 ID 부분만 잘라냅니다.
-            string rawPlayerId = message.Text["/login ".Length..].Trim();
             // 숫자 ID인지 확인합니다.
-            if (!long.TryParse(rawPlayerId, out long playerId) || playerId <= PlayerSession.AnonymousPlayerId)
+            if (!hasValidPlayerId)
             {
+                authenticationAttempts.RecordFailure(remoteAddress, accountKey);
                 // 보낸 사람에게만 실패 이유를 알려줍니다.
                 await sendToClientAsync(connection, MessageType.Notice, "Player id must be a positive number.");
                 // 명령을 처리했다고 호출자에게 알려줍니다.
@@ -522,6 +547,7 @@ public sealed class ChatCommandHandler
 
             // 세션에 플레이어 ID를 연결합니다.
             connection.Session.Authenticate(playerId);
+            authenticationAttempts.RecordSuccess(accountKey!);
             // 보낸 사람에게만 로그인 상태를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, $"Logged in as player {playerId}.");
             // 명령을 처리했다고 호출자에게 알려줍니다.

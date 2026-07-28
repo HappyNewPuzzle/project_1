@@ -15,6 +15,7 @@ RunServerInfoTest();
 RunServerLifecycleTest();
 RunConnectionAdmissionControllerTest();
 RunConnectionRateLimiterTest();
+RunAuthenticationAttemptLimiterTest();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
@@ -58,6 +59,7 @@ await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunSessionCommandTestAsync();
 await RunLoginCommandTestAsync();
+await RunAuthenticationBackoffCommandTestAsync();
 await RunDrainingRejectsGameCommandsTestAsync();
 await RunDuplicateLoginCommandTestAsync();
 await RunLoginWhileSpawnedCommandTestAsync();
@@ -239,6 +241,52 @@ static void RunConnectionRateLimiterTest()
     if (limiter.TrackedAddressCount != 1)
     {
         throw new InvalidOperationException("Idle rate-limit buckets should be removed.");
+    }
+}
+
+static void RunAuthenticationAttemptLimiterTest()
+{
+    DateTimeOffset currentTime = DateTimeOffset.UnixEpoch;
+    var limiter = new AuthenticationAttemptLimiter(
+        baseDelay: TimeSpan.FromSeconds(1),
+        maxDelay: TimeSpan.FromSeconds(8),
+        idleRetention: TimeSpan.FromMinutes(1),
+        getCurrentTime: () => currentTime);
+    IPAddress firstAddress = IPAddress.Parse("10.0.0.1");
+    IPAddress secondAddress = IPAddress.Parse("10.0.0.2");
+
+    if (limiter.RecordFailure(firstAddress, "1001") != TimeSpan.FromSeconds(1) ||
+        limiter.Check(firstAddress, "2002").RetryAfter != TimeSpan.FromSeconds(1) ||
+        limiter.Check(secondAddress, "1001").RetryAfter != TimeSpan.FromSeconds(1))
+    {
+        throw new InvalidOperationException("Authentication backoff should apply by both IP and account.");
+    }
+
+    currentTime += TimeSpan.FromSeconds(1);
+    if (limiter.RecordFailure(firstAddress, "1001") != TimeSpan.FromSeconds(2))
+    {
+        throw new InvalidOperationException("Authentication failures should increase backoff exponentially.");
+    }
+
+    currentTime += TimeSpan.FromSeconds(2);
+    limiter.RecordFailure(firstAddress, "1001");
+    currentTime += TimeSpan.FromSeconds(4);
+    if (!limiter.Check(secondAddress, "1001").Allowed)
+    {
+        throw new InvalidOperationException("Authentication attempt should resume after its backoff.");
+    }
+
+    limiter.RecordFailure(secondAddress, "1001");
+    IPAddress thirdAddress = IPAddress.Parse("10.0.0.3");
+    if (limiter.Check(thirdAddress, "1001").Allowed)
+    {
+        throw new InvalidOperationException("A fresh account failure should immediately apply backoff.");
+    }
+
+    limiter.RecordSuccess("1001");
+    if (!limiter.Check(thirdAddress, "1001").Allowed)
+    {
+        throw new InvalidOperationException("Successful authentication should clear account failures.");
     }
 }
 
@@ -1511,6 +1559,35 @@ static async Task RunLoginCommandTestAsync()
     if (context.SentMessages.Single().Text != "Logged in as player 1001.")
     {
         throw new InvalidOperationException("/login did not return the expected notice.");
+    }
+}
+
+static async Task RunAuthenticationBackoffCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login invalid"));
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login 1001"));
+
+    if (context.Connection.Session.IsAuthenticated ||
+        context.SentMessages.Last().Text !=
+            "Login temporarily limited. Retry after 1 seconds.")
+    {
+        throw new InvalidOperationException("Failed login should delay the next login attempt from the IP.");
+    }
+
+    context.CurrentTime += TimeSpan.FromSeconds(1);
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/login 1001"));
+    if (!context.Connection.Session.IsAuthenticated ||
+        context.Connection.Session.PlayerId != 1001)
+    {
+        throw new InvalidOperationException("Login should resume after authentication backoff expires.");
     }
 }
 
@@ -3308,6 +3385,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public ServerLifecycle Lifecycle { get; } = new();
 
+    public AuthenticationAttemptLimiter AuthenticationAttempts { get; }
+
     public string? DuplicateName { get; set; }
 
     public DateTimeOffset CurrentTime { get; set; } = DateTimeOffset.UnixEpoch;
@@ -3324,6 +3403,11 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
         var attackRequests = new PlayerAttackRequestQueue();
         var combatTickProcessor = new CombatTickProcessor(attackRequests, Monsters, GroundLoot);
         var characterSaves = new CharacterSaveService(Characters);
+        AuthenticationAttempts = new AuthenticationAttemptLimiter(
+            WorldRules.AuthenticationBackoffBaseDelay,
+            WorldRules.AuthenticationBackoffMaxDelay,
+            WorldRules.AuthenticationFailureIdleRetention,
+            () => CurrentTime);
         Lifecycle.MarkRunning();
         worldTickTask = new WorldTickLoop(
             worldTickProcessor,
@@ -3355,7 +3439,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             GroundLoot,
             Characters,
             characterSaves,
-            () => Lifecycle.State);
+            () => Lifecycle.State,
+            AuthenticationAttempts);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)
