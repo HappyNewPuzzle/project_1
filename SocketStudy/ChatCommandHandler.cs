@@ -6,7 +6,7 @@ public sealed class ChatCommandHandler
     private static readonly HashSet<string> DrainingBlockedCommands = new(
         [
             "/attack", "/despawn", "/equip", "/join", "/leave", "/load",
-            "/login", "/loot", "/me", "/move", "/name", "/pickup", "/rename",
+            "/login", "/loot", "/me", "/move", "/name", "/pickup", "/register", "/rename",
             "/spawn", "/spawn-monster", "/unequip", "/use", "/warp", "/whisper"
         ],
         StringComparer.OrdinalIgnoreCase);
@@ -33,7 +33,8 @@ public sealed class ChatCommandHandler
         "/pickup <lootId>",
         "/save",
         "/load",
-        "/login <playerId>",
+        "/register <playerId> <password>",
+        "/login <playerId> <password>",
         "/logout",
         "/pos",
         "/map",
@@ -87,7 +88,9 @@ public sealed class ChatCommandHandler
     private const string RenameUsage = "Usage: /rename <nickname>";
 
     // /login 명령 사용법입니다.
-    private const string LoginUsage = "Usage: /login <playerId>";
+    private const string LoginUsage = "Usage: /login <playerId> <password>";
+
+    private const string RegisterUsage = "Usage: /register <playerId> <password>";
 
     // /move 명령 사용법입니다.
     private const string MoveUsage = "Usage: /move <sequence> <x> <y>";
@@ -158,6 +161,8 @@ public sealed class ChatCommandHandler
     private readonly CharacterSaveService characterSaves;
     private readonly Func<ServerLifecycleState> getServerState;
     private readonly AuthenticationAttemptLimiter authenticationAttempts;
+    private readonly IAccountRepository accounts;
+    private readonly PasswordHasher passwordHasher;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -185,7 +190,9 @@ public sealed class ChatCommandHandler
         ICharacterRepository characters,
         CharacterSaveService characterSaves,
         Func<ServerLifecycleState> getServerState,
-        AuthenticationAttemptLimiter authenticationAttempts)
+        AuthenticationAttemptLimiter authenticationAttempts,
+        IAccountRepository accounts,
+        PasswordHasher passwordHasher)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -227,6 +234,8 @@ public sealed class ChatCommandHandler
         this.characterSaves = characterSaves;
         this.getServerState = getServerState;
         this.authenticationAttempts = authenticationAttempts;
+        this.accounts = accounts;
+        this.passwordHasher = passwordHasher;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -493,30 +502,47 @@ public sealed class ChatCommandHandler
             return true;
         }
 
-        // /login 명령은 학습용으로 플레이어 ID를 세션에 연결합니다.
-        if (message.Text.StartsWith("/login ", StringComparison.OrdinalIgnoreCase))
+        if (message.Text.StartsWith("/register ", StringComparison.OrdinalIgnoreCase))
         {
-            string rawPlayerId = message.Text["/login ".Length..].Trim();
-            bool hasValidPlayerId = long.TryParse(rawPlayerId, out long playerId) &&
-                playerId > PlayerSession.AnonymousPlayerId;
-            string? accountKey = hasValidPlayerId ? playerId.ToString() : null;
-            IPAddress remoteAddress =
-                (connection.Client.Client.RemoteEndPoint as IPEndPoint)?.Address ??
-                IPAddress.None;
-            AuthenticationAttemptResult attempt =
-                authenticationAttempts.Check(remoteAddress, accountKey);
-            if (!attempt.Allowed)
+            string[] parts = message.Text["/register ".Length..]
+                .Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2 ||
+                !long.TryParse(parts[0], out long registerPlayerId) ||
+                registerPlayerId <= PlayerSession.AnonymousPlayerId)
             {
-                int retryAfterSeconds = Math.Max(
-                    1,
-                    (int)Math.Ceiling(attempt.RetryAfter.TotalSeconds));
-                await sendToClientAsync(
-                    connection,
-                    MessageType.Notice,
-                    $"Login temporarily limited. Retry after {retryAfterSeconds} seconds.");
+                await sendToClientAsync(connection, MessageType.Notice, RegisterUsage);
                 return true;
             }
 
+            try
+            {
+                AccountCredential account = passwordHasher.Hash(registerPlayerId, parts[1]);
+                bool created = await accounts.CreateAsync(account);
+                string result = created
+                    ? $"Account created for player {registerPlayerId}."
+                    : "Account could not be created.";
+                await sendToClientAsync(connection, MessageType.Notice, result);
+            }
+            catch (ArgumentException ex)
+            {
+                await sendToClientAsync(connection, MessageType.Notice, ex.Message);
+            }
+
+            return true;
+        }
+
+        if (await SendUsageIfExactCommandAsync(
+            connection,
+            message.Text,
+            "/register",
+            RegisterUsage))
+        {
+            return true;
+        }
+
+        // /login 명령은 저장된 계정의 비밀번호를 확인하고 세션을 발급합니다.
+        if (message.Text.StartsWith("/login ", StringComparison.OrdinalIgnoreCase))
+        {
             // 월드에 스폰된 세션은 플레이어 정체성을 바꿀 수 없습니다.
             if (connection.Session.IsSpawned)
             {
@@ -535,22 +561,50 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            // 숫자 ID인지 확인합니다.
-            if (!hasValidPlayerId)
+            string[] parts = message.Text["/login ".Length..]
+                .Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            long playerId = PlayerSession.AnonymousPlayerId;
+            bool hasValidCredentials = parts.Length == 2 &&
+                long.TryParse(parts[0], out playerId) &&
+                playerId > PlayerSession.AnonymousPlayerId;
+            string? accountKey = hasValidCredentials ? playerId.ToString() : null;
+            IPAddress remoteAddress =
+                (connection.Client.Client.RemoteEndPoint as IPEndPoint)?.Address ??
+                IPAddress.None;
+            AuthenticationAttemptResult attempt =
+                authenticationAttempts.Check(remoteAddress, accountKey);
+            if (!attempt.Allowed)
             {
-                authenticationAttempts.RecordFailure(remoteAddress, accountKey);
-                // 보낸 사람에게만 실패 이유를 알려줍니다.
-                await sendToClientAsync(connection, MessageType.Notice, "Player id must be a positive number.");
-                // 명령을 처리했다고 호출자에게 알려줍니다.
+                int retryAfterSeconds = Math.Max(
+                    1,
+                    (int)Math.Ceiling(attempt.RetryAfter.TotalSeconds));
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    $"Login temporarily limited. Retry after {retryAfterSeconds} seconds.");
                 return true;
             }
 
-            // 세션에 플레이어 ID를 연결합니다.
-            connection.Session.Authenticate(playerId);
+            AccountCredential? account = hasValidCredentials
+                ? await accounts.FindAsync(playerId)
+                : null;
+            if (!passwordHasher.Verify(parts.ElementAtOrDefault(1) ?? "", account))
+            {
+                authenticationAttempts.RecordFailure(remoteAddress, accountKey);
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    "Invalid player id or password.");
+                return true;
+            }
+
+            string sessionToken = SessionTokenGenerator.Create();
+            connection.Session.Authenticate(playerId, sessionToken);
             authenticationAttempts.RecordSuccess(accountKey!);
-            // 보낸 사람에게만 로그인 상태를 알려줍니다.
-            await sendToClientAsync(connection, MessageType.Notice, $"Logged in as player {playerId}.");
-            // 명령을 처리했다고 호출자에게 알려줍니다.
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Logged in as player {playerId}. Session token: {sessionToken}");
             return true;
         }
 

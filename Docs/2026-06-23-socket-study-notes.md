@@ -2397,3 +2397,64 @@ TCP accept
 - 클라이언트에는 계정 존재 여부를 노출하지 않는 동일한 제한 메시지를 반환합니다.
 
 다음 단계에서는 학습용 player ID 로그인을 실제 비밀번호 hash 검증과 계정 저장소로 교체하고, 인증 성공 시 추측하기 어려운 session token을 발급하는 구조로 발전할 수 있습니다.
+
+### 다음 단계 19. 비밀번호 hash, 계정 저장소와 session token
+
+이번 step에서는 player ID만 알면 로그인할 수 있던 학습용 인증을 계정과 비밀번호 기반 인증으로 교체했습니다.
+
+새 명령:
+
+```text
+/register <playerId> <password>
+/login <playerId> <password>
+```
+
+비밀번호는 8자 이상 128자 이하만 허용합니다. 서버는 원문 비밀번호를 저장하지 않고 다음 값만 SQLite `accounts` 테이블에 저장합니다.
+
+```text
+player_id
+password_salt: 계정마다 생성한 16-byte 난수
+password_hash: PBKDF2-SHA256 32-byte 결과
+iterations: 100,000
+created_at
+```
+
+같은 비밀번호라도 salt가 다르면 저장되는 hash가 달라집니다. 로그인 시 저장된 salt와 iteration으로 입력 비밀번호를 다시 계산하고, `CryptographicOperations.FixedTimeEquals`로 비교해 비교 시간 차이를 줄입니다.
+
+계정 생성은 `INSERT ... ON CONFLICT DO NOTHING`을 사용합니다. 같은 player ID가 동시에 등록되어도 SQLite primary key가 하나만 성공시키며, 클라이언트에는 계정 존재 여부에 관한 자세한 내부 정보를 노출하지 않습니다. 로그인 실패도 존재하지 않는 계정과 틀린 비밀번호 모두 `Invalid player id or password`로 동일하게 응답합니다. 존재하지 않는 계정도 dummy PBKDF2 검증을 수행해 계정 유무에 따른 큰 응답 시간 차이를 줄입니다.
+
+로그인 성공 흐름:
+
+```text
+계정 조회
+-> PBKDF2 hash 검증
+-> 32-byte 암호학적 난수 생성
+-> URL-safe Base64 session token 변환
+-> PlayerSession에 player ID와 token 연결
+-> 계정 backoff 초기화
+```
+
+`PlayerSession.Logout`은 player ID와 함께 session token도 제거합니다. 내부 월드 단위 테스트가 사용하는 `Authenticate(playerId)` API는 유지되며, token을 전달하지 않으면 테스트용 세션에도 안전한 난수 token을 자동 생성합니다.
+
+구성 요소:
+
+- `IAccountRepository`: 계정 생성과 조회 계약
+- `SqliteAccountRepository`: 운영 학습용 SQLite 구현
+- `InMemoryAccountRepository`: 빠른 명령 테스트 구현
+- `PasswordHasher`: salt 생성, PBKDF2 hash와 고정 시간 검증
+- `SessionTokenGenerator`: 256-bit URL-safe token 생성
+
+공부 포인트:
+
+- 비밀번호는 암호화 후 복호화하는 데이터가 아니라 단방향 password hash로 검증해야 합니다.
+- 일반 SHA-256 한 번은 너무 빠르므로 비밀번호에는 의도적으로 느린 PBKDF2 같은 KDF가 필요합니다.
+- salt는 rainbow table과 동일 비밀번호 hash 비교를 어렵게 합니다.
+- session token은 순차 player ID와 달리 공격자가 추측하기 어려워야 합니다.
+- 저장소 테스트는 SQLite round-trip, 중복 계정 거부, 올바른/틀린 비밀번호를 검증합니다.
+- 명령 테스트는 계정 등록, 비밀번호 로그인, 실패 backoff와 token 발급을 검증합니다.
+
+중요한 현재 한계:
+
+현재 TCP protocol에는 TLS가 없으므로 비밀번호와 session token이 네트워크에서 암호화되지 않습니다. 이 단계는 인증 데이터 구조 학습용이며 인터넷에 공개하면 안 됩니다.
+
+다음 단계에서는 TLS로 전송 구간을 암호화하고, session token을 서버 측 세션 저장소에서 만료·폐기·중복 로그인 정책과 함께 관리할 수 있습니다.

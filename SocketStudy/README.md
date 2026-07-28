@@ -86,12 +86,15 @@ MMO 확장을 위한 현재 플레이어 세션 상태는 `/session`으로 확�
 < [notice] Session: player-id=0, state=anonymous, spawn=not-spawned
 ```
 
-학습용 플레이어 ID를 세션에 연결하려면 `/login`을 입력합니다.
+먼저 계정을 등록한 뒤 비밀번호로 `/login`합니다.
 인증된 세션의 플레이어 ID는 다시 로그인하여 바꿀 수 없으며, 스폰 중인 로그인 요청도 거부됩니다.
 
 ```text
-> /login 1001
-< [notice] Logged in as player 1001.
+> /register 1001 correct-password
+< [notice] Account created for player 1001.
+
+> /login 1001 correct-password
+< [notice] Logged in as player 1001. Session token: ...
 ```
 
 플레이어의 학습용 월드 위치는 `/pos`로 확인하고 `/move <sequence> <x> <y>`로 변경합니다.
@@ -171,7 +174,7 @@ MMO 확장을 위한 현재 플레이어 세션 상태는 `/session`으로 확�
 
 ```text
 > /help
-< [notice] Commands: /help, /commands, /name <nickname>, /rename <nickname>, /whoami, /session, /login <playerId>, /logout, /pos, /map, /warp <mapId> <x> <y>, /move <sequence> <x> <y>, /nearby, /look, /spawn, /despawn, /users, /rooms, /room-users, /stats, /motd, /version, /join <room>, /leave, /where, /ping, /echo <message>, /time, /uptime, /me <action>, /whisper <nickname> <message>, /quit
+< [notice] Commands: ..., /register <playerId> <password>, /login <playerId> <password>, /logout, ...
 ```
 
 처음 접속하면 기본 채팅방 `lobby`에 들어갑니다. 다른 방으로 이동하려면 `/join`을 입력합니다.

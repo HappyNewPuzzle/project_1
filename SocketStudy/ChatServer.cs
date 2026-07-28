@@ -48,6 +48,9 @@ sealed class ChatServer
         WorldRules.AuthenticationBackoffBaseDelay,
         WorldRules.AuthenticationBackoffMaxDelay,
         WorldRules.AuthenticationFailureIdleRetention);
+    private readonly IAccountRepository accounts = new SqliteAccountRepository(
+        Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
+    private readonly PasswordHasher passwordHasher = new();
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -114,7 +117,9 @@ sealed class ChatServer
             characters,
             characterSaves,
             () => lifecycle.State,
-            authenticationAttempts);
+            authenticationAttempts,
+            accounts,
+            passwordHasher);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

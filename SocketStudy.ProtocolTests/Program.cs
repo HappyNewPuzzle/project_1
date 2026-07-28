@@ -16,6 +16,7 @@ RunServerLifecycleTest();
 RunConnectionAdmissionControllerTest();
 RunConnectionRateLimiterTest();
 RunAuthenticationAttemptLimiterTest();
+await RunAccountAuthenticationTestAsync();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
@@ -58,6 +59,7 @@ await RunTimeCommandTestAsync();
 await RunUptimeCommandTestAsync();
 await RunWhoAmICommandTestAsync();
 await RunSessionCommandTestAsync();
+await RunRegisterCommandTestAsync();
 await RunLoginCommandTestAsync();
 await RunAuthenticationBackoffCommandTestAsync();
 await RunDrainingRejectsGameCommandsTestAsync();
@@ -287,6 +289,48 @@ static void RunAuthenticationAttemptLimiterTest()
     if (!limiter.Check(thirdAddress, "1001").Allowed)
     {
         throw new InvalidOperationException("Successful authentication should clear account failures.");
+    }
+}
+
+static async Task RunAccountAuthenticationTestAsync()
+{
+    string directory = Path.Combine(
+        Path.GetTempPath(),
+        $"socket-study-accounts-{Guid.NewGuid():N}");
+    string databasePath = Path.Combine(directory, "accounts.db");
+    try
+    {
+        var repository = new SqliteAccountRepository(databasePath);
+        var hasher = new PasswordHasher();
+        AccountCredential created = hasher.Hash(1001, "correct-password");
+
+        if (!await repository.CreateAsync(created) ||
+            await repository.CreateAsync(created))
+        {
+            throw new InvalidOperationException("Account repository should reject duplicate player ids.");
+        }
+
+        AccountCredential? loaded = await repository.FindAsync(1001);
+        if (loaded is null ||
+            !hasher.Verify("correct-password", loaded) ||
+            hasher.Verify("wrong-password", loaded))
+        {
+            throw new InvalidOperationException("Stored password hash should only verify the correct password.");
+        }
+
+        string firstToken = SessionTokenGenerator.Create();
+        string secondToken = SessionTokenGenerator.Create();
+        if (firstToken == secondToken || firstToken.Length < 40)
+        {
+            throw new InvalidOperationException("Session tokens should be long and unpredictable.");
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 }
 
@@ -533,7 +577,9 @@ static void RunPlayerSessionTest()
 
     session.Authenticate(1001);
 
-    if (!session.IsAuthenticated || session.PlayerId != 1001)
+    if (!session.IsAuthenticated ||
+        session.PlayerId != 1001 ||
+        string.IsNullOrWhiteSpace(session.SessionToken))
     {
         throw new InvalidOperationException("Player sessions should store authenticated player ids.");
     }
@@ -630,6 +676,7 @@ static void RunPlayerSessionTest()
     session.Logout();
 
     if (session.IsAuthenticated || session.PlayerId != PlayerSession.AnonymousPlayerId ||
+        session.SessionToken is not null ||
         session.Position != WorldPosition.Origin || session.MapId != WorldRules.DefaultMapId)
     {
         throw new InvalidOperationException("Player sessions should reset authentication, position, and map on logout.");
@@ -1546,32 +1593,60 @@ static async Task RunSessionCommandTestAsync()
 static async Task RunLoginCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    await context.CreateAccountAsync(1001, "correct-password");
 
     bool handled = await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/login 1001"));
+        new NetworkMessage(MessageType.Command, "/login 1001 correct-password"));
 
     if (!handled || context.Connection.Session.PlayerId != 1001 || !context.Connection.Session.IsAuthenticated)
     {
         throw new InvalidOperationException("/login did not authenticate the player session.");
     }
 
-    if (context.SentMessages.Single().Text != "Logged in as player 1001.")
+    if (!context.SentMessages.Single().Text.StartsWith(
+        "Logged in as player 1001. Session token: ") ||
+        string.IsNullOrWhiteSpace(context.Connection.Session.SessionToken))
     {
         throw new InvalidOperationException("/login did not return the expected notice.");
+    }
+}
+
+static async Task RunRegisterCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/register 1001 correct-password"));
+    AccountCredential? account = await context.Accounts.FindAsync(1001);
+    if (account is null ||
+        !context.PasswordHasher.Verify("correct-password", account) ||
+        context.SentMessages.Single().Text != "Account created for player 1001.")
+    {
+        throw new InvalidOperationException("/register should create a verifiable password hash.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/register 1001 another-password"));
+    if (context.SentMessages.Last().Text != "Account could not be created.")
+    {
+        throw new InvalidOperationException("/register should not reveal details for duplicate accounts.");
     }
 }
 
 static async Task RunAuthenticationBackoffCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    await context.CreateAccountAsync(1001, "correct-password");
 
     await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/login invalid"));
+        new NetworkMessage(MessageType.Command, "/login invalid bad-password"));
     await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/login 1001"));
+        new NetworkMessage(MessageType.Command, "/login 1001 correct-password"));
 
     if (context.Connection.Session.IsAuthenticated ||
         context.SentMessages.Last().Text !=
@@ -1583,7 +1658,7 @@ static async Task RunAuthenticationBackoffCommandTestAsync()
     context.CurrentTime += TimeSpan.FromSeconds(1);
     await context.Handler.TryHandleAsync(
         context.Connection,
-        new NetworkMessage(MessageType.Command, "/login 1001"));
+        new NetworkMessage(MessageType.Command, "/login 1001 correct-password"));
     if (!context.Connection.Session.IsAuthenticated ||
         context.Connection.Session.PlayerId != 1001)
     {
@@ -1660,7 +1735,7 @@ static async Task RunInvalidLoginCommandTestAsync()
         throw new InvalidOperationException("Invalid /login should not authenticate the player session.");
     }
 
-    if (context.SentMessages.Single().Text != "Player id must be a positive number.")
+    if (context.SentMessages.Single().Text != "Invalid player id or password.")
     {
         throw new InvalidOperationException("Invalid /login did not return the expected notice.");
     }
@@ -1674,7 +1749,7 @@ static async Task RunMissingLoginCommandTestAsync()
         context.Connection,
         new NetworkMessage(MessageType.Command, "/login"));
 
-    if (!handled || context.SentMessages.Single().Text != "Usage: /login <playerId>")
+    if (!handled || context.SentMessages.Single().Text != "Usage: /login <playerId> <password>")
     {
         throw new InvalidOperationException("Missing /login player id did not return the expected usage notice.");
     }
@@ -3387,6 +3462,10 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public AuthenticationAttemptLimiter AuthenticationAttempts { get; }
 
+    public InMemoryAccountRepository Accounts { get; } = new();
+
+    public PasswordHasher PasswordHasher { get; } = new();
+
     public string? DuplicateName { get; set; }
 
     public DateTimeOffset CurrentTime { get; set; } = DateTimeOffset.UnixEpoch;
@@ -3440,7 +3519,9 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             Characters,
             characterSaves,
             () => Lifecycle.State,
-            AuthenticationAttempts);
+            AuthenticationAttempts,
+            Accounts,
+            PasswordHasher);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)
@@ -3454,6 +3535,11 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     {
         NetworkPair pair = await NetworkPair.ConnectAsync();
         return new CommandHandlerTestContext(pair, name);
+    }
+
+    public Task<bool> CreateAccountAsync(long playerId, string password)
+    {
+        return Accounts.CreateAsync(PasswordHasher.Hash(playerId, password));
     }
 
     public async ValueTask DisposeAsync()
