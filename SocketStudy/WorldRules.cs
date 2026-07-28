@@ -77,6 +77,16 @@ public static class WorldRules
 
     public static readonly TimeSpan AdmissionRejectionTimeout = TimeSpan.FromSeconds(1);
 
+    public const int ConnectionRateLimitCapacity = 10;
+
+    public const double ConnectionRateLimitRefillPerSecond = 2;
+
+    public const int ConnectionRateLimitBlockThreshold = 3;
+
+    public static readonly TimeSpan ConnectionRateLimitBlockDuration = TimeSpan.FromSeconds(30);
+
+    public static readonly TimeSpan ConnectionRateLimitIdleRetention = TimeSpan.FromMinutes(10);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

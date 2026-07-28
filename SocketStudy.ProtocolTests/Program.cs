@@ -14,6 +14,7 @@ RunNameRulesTest();
 RunServerInfoTest();
 RunServerLifecycleTest();
 RunConnectionAdmissionControllerTest();
+RunConnectionRateLimiterTest();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
@@ -191,6 +192,54 @@ static void RunConnectionAdmissionControllerTest()
     }
 
     ipv4.Lease!.Dispose();
+}
+
+static void RunConnectionRateLimiterTest()
+{
+    DateTimeOffset currentTime = DateTimeOffset.UnixEpoch;
+    var limiter = new ConnectionRateLimiter(
+        capacity: 2,
+        refillTokensPerSecond: 1,
+        blockViolationThreshold: 3,
+        blockDuration: TimeSpan.FromSeconds(30),
+        idleRetention: TimeSpan.FromMinutes(1),
+        getCurrentTime: () => currentTime);
+    IPAddress address = IPAddress.Parse("10.0.0.1");
+
+    if (!limiter.Check(address).Allowed ||
+        !limiter.Check(address).Allowed ||
+        limiter.Check(address).Status != ConnectionRateLimitStatus.RateLimited ||
+        limiter.Check(address).Status != ConnectionRateLimitStatus.RateLimited)
+    {
+        throw new InvalidOperationException("Token bucket should allow its burst capacity before limiting.");
+    }
+
+    ConnectionRateLimitResult blocked = limiter.Check(address);
+    if (blocked.Status != ConnectionRateLimitStatus.TemporarilyBlocked ||
+        blocked.RetryAfter != TimeSpan.FromSeconds(30) ||
+        limiter.Check(address.MapToIPv6()).Status != ConnectionRateLimitStatus.TemporarilyBlocked)
+    {
+        throw new InvalidOperationException("Repeated rate-limit violations should temporarily block the IP.");
+    }
+
+    currentTime += TimeSpan.FromSeconds(30);
+    if (!limiter.Check(address).Allowed)
+    {
+        throw new InvalidOperationException("A blocked IP should recover after its block duration.");
+    }
+
+    currentTime += TimeSpan.FromSeconds(1);
+    if (!limiter.Check(address).Allowed)
+    {
+        throw new InvalidOperationException("Token bucket should refill according to elapsed time.");
+    }
+
+    currentTime += TimeSpan.FromMinutes(1);
+    limiter.Check(IPAddress.Parse("10.0.0.2"));
+    if (limiter.TrackedAddressCount != 1)
+    {
+        throw new InvalidOperationException("Idle rate-limit buckets should be removed.");
+    }
 }
 
 static async Task RunDrainingRejectsGameCommandsTestAsync()

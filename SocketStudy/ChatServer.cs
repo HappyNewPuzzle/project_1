@@ -38,6 +38,12 @@ sealed class ChatServer
     private readonly ConnectionAdmissionController admission = new(
         WorldRules.MaxConcurrentConnections,
         WorldRules.MaxConnectionsPerIp);
+    private readonly ConnectionRateLimiter connectionRateLimiter = new(
+        WorldRules.ConnectionRateLimitCapacity,
+        WorldRules.ConnectionRateLimitRefillPerSecond,
+        WorldRules.ConnectionRateLimitBlockThreshold,
+        WorldRules.ConnectionRateLimitBlockDuration,
+        WorldRules.ConnectionRateLimitIdleRetention);
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
@@ -148,10 +154,28 @@ sealed class ChatServer
                 TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken);
                 IPAddress address = (client.Client.RemoteEndPoint as IPEndPoint)?.Address ??
                     IPAddress.None;
+                ConnectionRateLimitResult rateLimit = connectionRateLimiter.Check(address);
+                if (!rateLimit.Allowed)
+                {
+                    int retryAfterSeconds = Math.Max(
+                        1,
+                        (int)Math.Ceiling(rateLimit.RetryAfter.TotalSeconds));
+                    string rateLimitMessage = rateLimit.Status ==
+                        ConnectionRateLimitStatus.TemporarilyBlocked
+                            ? $"Connection rejected: IP temporarily blocked. Retry after {retryAfterSeconds} seconds."
+                            : $"Connection rejected: rate limit exceeded. Retry after {retryAfterSeconds} seconds.";
+                    await RejectClientAsync(client, rateLimitMessage);
+                    continue;
+                }
+
                 ConnectionAdmissionResult admissionResult = admission.TryAcquire(address);
                 if (!admissionResult.Accepted)
                 {
-                    await RejectClientAsync(client, admissionResult.Status);
+                    string admissionMessage =
+                        admissionResult.Status == ConnectionAdmissionStatus.ServerFull
+                            ? "Connection rejected: server is full."
+                            : "Connection rejected: too many connections from this IP address.";
+                    await RejectClientAsync(client, admissionMessage);
                     continue;
                 }
 
@@ -226,12 +250,8 @@ sealed class ChatServer
 
     private static async Task RejectClientAsync(
         TcpClient client,
-        ConnectionAdmissionStatus status)
+        string message)
     {
-        string message = status == ConnectionAdmissionStatus.ServerFull
-            ? "Connection rejected: server is full."
-            : "Connection rejected: too many connections from this IP address.";
-
         using (client)
         using (var timeout = new CancellationTokenSource(WorldRules.AdmissionRejectionTimeout))
         {

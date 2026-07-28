@@ -2314,3 +2314,45 @@ IPv4-mapped IPv6 주소는 IPv4로 정규화합니다. 같은 호스트가 `127.
 - 테스트는 IP 제한, 전체 제한, lease 이중 dispose, 반납된 슬롯 재사용을 검증합니다.
 
 다음 단계에서는 짧은 시간에 반복되는 연결 시도를 제한하는 token bucket 기반 IP별 접속 속도 제한과 임시 차단 정책을 추가할 수 있습니다.
+
+### 다음 단계 17. Token bucket 접속 속도 제한과 임시 차단
+
+이번 step에서는 동시 접속 수뿐 아니라 짧은 시간에 반복되는 TCP 접속 시도도 IP별로 제한합니다.
+
+현재 정책:
+
+```text
+초기 token: 10개
+refill: 초당 2개
+접속 시도 비용: token 1개
+token 소진 후 연속 위반 3회: 30초 임시 차단
+사용하지 않은 IP bucket: 10분 후 정리
+```
+
+Token bucket은 평상시에는 refill 속도로 접속을 허용하면서, 순간적인 정상 재접속은 bucket 용량만큼 burst로 받아들입니다. token이 부족하면 다음 token이 생길 때까지의 `RetryAfter`를 계산해 거부 응답에 포함합니다.
+
+같은 IP가 token이 없는 상태에서 계속 접속을 시도하면 위반 횟수가 증가합니다. 세 번째 연속 위반부터 30초 동안 `TemporarilyBlocked`가 되며, 차단 중 요청에도 남은 시간을 반환합니다. 차단 시간이 끝나면 위반 횟수를 초기화하고 elapsed time에 따라 refill된 token을 사용할 수 있습니다.
+
+처리 순서:
+
+```text
+TCP accept
+-> IP token bucket 검사
+-> 동시 접속 admission 검사
+-> lease 확보
+-> 클라이언트 작업 시작
+```
+
+속도 제한을 동시 접속 제한보다 먼저 검사하므로 서버가 가득 찬 상태에서 반복되는 접속 시도도 rate limiter에 기록됩니다. IPv4-mapped IPv6 주소 역시 IPv4로 정규화해 같은 IP bucket을 공유합니다.
+
+메모리 보호를 위해 10분 동안 사용되지 않았고 현재 차단 중이 아닌 IP bucket을 주기적으로 제거합니다. 이 정리가 없다면 공격자가 출발지 주소를 계속 바꿀 때 dictionary가 끝없이 증가할 수 있습니다.
+
+공부 포인트:
+
+- 동시 접속 제한은 현재 사용량을, rate limit은 시간당 요청 빈도를 제어합니다.
+- token bucket은 평균 속도 제한과 제한된 burst 허용을 함께 표현할 수 있습니다.
+- `RetryAfter`는 클라이언트가 언제 재시도해야 하는지 알려줍니다.
+- 가짜 시계를 주입하면 refill과 30초 차단 해제를 실제 대기 없이 결정적으로 테스트할 수 있습니다.
+- 테스트는 burst 소진, rate limit, 임시 차단, IPv4/IPv6 정규화, 차단 해제와 refill을 검증합니다.
+
+다음 단계에서는 로그인 시도에도 별도의 계정/IP rate limit을 적용하고, 실패 횟수 기반 지수 backoff로 인증 공격을 완화할 수 있습니다.
