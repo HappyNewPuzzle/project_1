@@ -17,6 +17,7 @@ RunConnectionAdmissionControllerTest();
 RunConnectionRateLimiterTest();
 RunAuthenticationAttemptLimiterTest();
 await RunAccountAuthenticationTestAsync();
+RunSessionTokenStoreTest();
 RunPlayerSessionTest();
 await RunPlayerEntityTestAsync();
 RunWorldEventTest();
@@ -61,6 +62,8 @@ await RunWhoAmICommandTestAsync();
 await RunSessionCommandTestAsync();
 await RunRegisterCommandTestAsync();
 await RunLoginCommandTestAsync();
+await RunResumeAndRevokeSessionCommandTestAsync();
+await RunActiveSessionExpiryCommandTestAsync();
 await RunAuthenticationBackoffCommandTestAsync();
 await RunDrainingRejectsGameCommandsTestAsync();
 await RunDuplicateLoginCommandTestAsync();
@@ -331,6 +334,40 @@ static async Task RunAccountAuthenticationTestAsync()
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+}
+
+static void RunSessionTokenStoreTest()
+{
+    DateTimeOffset currentTime = DateTimeOffset.UnixEpoch;
+    var store = new SessionTokenStore(
+        TimeSpan.FromMinutes(30),
+        () => currentTime);
+
+    string firstToken = store.Issue(1001);
+    if (store.Validate(firstToken).PlayerId != 1001)
+    {
+        throw new InvalidOperationException("Issued session token should validate for its player.");
+    }
+
+    string replacementToken = store.Issue(1001);
+    if (store.Validate(firstToken).IsValid ||
+        !store.Validate(replacementToken).IsValid)
+    {
+        throw new InvalidOperationException("New login should replace the player's previous token.");
+    }
+
+    if (!store.Revoke(replacementToken) ||
+        store.Validate(replacementToken).IsValid)
+    {
+        throw new InvalidOperationException("Revoked session token should become invalid immediately.");
+    }
+
+    string expiringToken = store.Issue(2002);
+    currentTime += TimeSpan.FromMinutes(30);
+    if (store.Validate(expiringToken).IsValid)
+    {
+        throw new InvalidOperationException("Session token should expire at its configured lifetime.");
     }
 }
 
@@ -1606,9 +1643,52 @@ static async Task RunLoginCommandTestAsync()
 
     if (!context.SentMessages.Single().Text.StartsWith(
         "Logged in as player 1001. Session token: ") ||
-        string.IsNullOrWhiteSpace(context.Connection.Session.SessionToken))
+        string.IsNullOrWhiteSpace(context.Connection.Session.SessionToken) ||
+        !context.SessionTokens.Validate(context.Connection.Session.SessionToken).IsValid)
     {
         throw new InvalidOperationException("/login did not return the expected notice.");
+    }
+}
+
+static async Task RunResumeAndRevokeSessionCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    string token = context.SessionTokens.Issue(1001);
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, $"/resume {token}"));
+    if (context.Connection.Session.PlayerId != 1001 ||
+        context.Connection.Session.SessionToken != token ||
+        context.SentMessages.Single().Text != "Session resumed for player 1001.")
+    {
+        throw new InvalidOperationException("/resume should authenticate a valid stored session token.");
+    }
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/logout"));
+    if (context.SessionTokens.Validate(token).IsValid ||
+        context.Connection.Session.IsAuthenticated)
+    {
+        throw new InvalidOperationException("/logout should revoke the active session token.");
+    }
+}
+
+static async Task RunActiveSessionExpiryCommandTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    string token = context.SessionTokens.Issue(1001);
+    context.Connection.Session.Authenticate(1001, token);
+    context.CurrentTime += WorldRules.SessionTokenLifetime;
+
+    await context.Handler.TryHandleAsync(
+        context.Connection,
+        new NetworkMessage(MessageType.Command, "/ping"));
+    if (context.Connection.Session.IsAuthenticated ||
+        context.SentMessages.Single().Text != "Session expired. Login again.")
+    {
+        throw new InvalidOperationException("Expired active session should be saved and logged out.");
     }
 }
 
@@ -3466,6 +3546,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public PasswordHasher PasswordHasher { get; } = new();
 
+    public SessionTokenStore SessionTokens { get; }
+
     public string? DuplicateName { get; set; }
 
     public DateTimeOffset CurrentTime { get; set; } = DateTimeOffset.UnixEpoch;
@@ -3486,6 +3568,9 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             WorldRules.AuthenticationBackoffBaseDelay,
             WorldRules.AuthenticationBackoffMaxDelay,
             WorldRules.AuthenticationFailureIdleRetention,
+            () => CurrentTime);
+        SessionTokens = new SessionTokenStore(
+            WorldRules.SessionTokenLifetime,
             () => CurrentTime);
         Lifecycle.MarkRunning();
         worldTickTask = new WorldTickLoop(
@@ -3521,7 +3606,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             () => Lifecycle.State,
             AuthenticationAttempts,
             Accounts,
-            PasswordHasher);
+            PasswordHasher,
+            SessionTokens);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

@@ -2458,3 +2458,49 @@ created_at
 현재 TCP protocol에는 TLS가 없으므로 비밀번호와 session token이 네트워크에서 암호화되지 않습니다. 이 단계는 인증 데이터 구조 학습용이며 인터넷에 공개하면 안 됩니다.
 
 다음 단계에서는 TLS로 전송 구간을 암호화하고, session token을 서버 측 세션 저장소에서 만료·폐기·중복 로그인 정책과 함께 관리할 수 있습니다.
+
+### 다음 단계 20. 서버 측 session token 저장소와 만료
+
+이번 step에서는 로그인 응답으로만 전달하던 session token을 서버가 직접 저장하고 검증하도록 변경했습니다.
+
+정책:
+
+```text
+token 수명: 30분
+계정별 활성 token: 1개
+새 비밀번호 로그인: 이전 token 즉시 폐기
+/logout: 현재 token 즉시 폐기
+/resume <token>: 유효한 token으로 TCP 재접속 세션 복구
+```
+
+`SessionTokenStore`는 raw token을 그대로 저장하지 않고 SHA-256 fingerprint를 key로 보관합니다. 서버 메모리 dump나 디버깅 출력에서 저장소 내용이 노출되더라도 raw token을 바로 사용할 수 없게 하기 위한 방어입니다.
+
+발급 흐름:
+
+```text
+비밀번호 로그인 성공
+-> 256-bit random token 생성
+-> SHA-256 fingerprint 계산
+-> player ID, 만료 시각과 함께 저장
+-> 같은 player ID의 이전 fingerprint 제거
+-> raw token은 클라이언트와 PlayerSession에만 전달
+```
+
+재접속 시 `/resume <sessionToken>`을 보내면 서버가 fingerprint를 계산해 저장소를 조회합니다. token이 존재하고 만료되지 않았다면 비밀번호를 다시 보내지 않고 해당 player ID로 인증합니다. 존재하지 않거나 만료·폐기된 token에는 동일하게 `Invalid or expired session token`을 반환합니다.
+
+활성 연결도 명령을 처리할 때 managed token을 다시 검증합니다. 다른 위치의 로그인으로 token이 교체되거나 30분이 지나면 캐릭터 dirty state를 먼저 저장하고 익명 상태로 전환합니다. 저장에 실패하면 데이터 손실을 피하기 위해 로그아웃을 미루고 오류를 반환합니다.
+
+내부 월드 테스트가 `Authenticate(playerId)`로 만든 세션은 token 저장소 밖의 테스트 세션이므로 managed token 검사를 받지 않습니다. 비밀번호 로그인과 `/resume`처럼 token을 명시해 인증한 실제 세션만 검증 대상입니다.
+
+공부 포인트:
+
+- token 자체가 인증 정보이므로 비밀번호와 마찬가지로 노출되면 안 됩니다.
+- 서버 저장소에는 raw token 대신 fingerprint를 저장하면 저장소 노출 피해를 줄일 수 있습니다.
+- 고정 만료는 탈취된 token을 영구적으로 사용할 수 없게 합니다.
+- 계정별 단일 token 정책은 새 로그인 시 이전 재접속 권한을 무효화합니다.
+- logout은 클라이언트 상태만 지우는 것이 아니라 서버 token도 폐기해야 합니다.
+- 테스트는 발급, 검증, token rotation, 폐기, 만료, `/resume`, 활성 세션 만료를 검증합니다.
+
+현재 `SessionTokenStore`는 단일 서버 프로세스 메모리에 있습니다. 서버 재시작 시 모든 token이 사라지며, 여러 서버 인스턴스가 token을 공유할 수도 없습니다. 이후 Redis 같은 공유 저장소로 교체할 수 있습니다.
+
+중요하게도 TCP 전송은 아직 평문입니다. 다음 단계에서는 `SslStream`과 서버 인증서를 적용하고, 클라이언트가 인증서 chain과 서버 이름을 검증하도록 만들어 비밀번호와 token의 전송 구간을 암호화합니다.

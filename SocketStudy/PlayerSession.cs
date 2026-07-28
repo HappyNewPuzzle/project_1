@@ -14,6 +14,8 @@ public sealed class PlayerSession
 
     public string? SessionToken { get; private set; }
 
+    public bool IsSessionTokenManaged { get; private set; }
+
     // 플레이어의 현재 월드 위치입니다.
     public WorldPosition Position { get; private set; }
 
@@ -95,6 +97,7 @@ public sealed class PlayerSession
 
         // 세션에 플레이어 ID를 저장합니다.
         PlayerId = playerId;
+        IsSessionTokenManaged = sessionToken is not null;
         SessionToken = sessionToken ?? SessionTokenGenerator.Create();
         IsDirty = true;
     }
@@ -412,6 +415,7 @@ public sealed class PlayerSession
         // 세션을 익명 플레이어 ID로 되돌립니다.
         PlayerId = AnonymousPlayerId;
         SessionToken = null;
+        IsSessionTokenManaged = false;
         // 다음 로그인에 이전 위치가 이어지지 않도록 원점으로 초기화합니다.
         Position = WorldPosition.Origin;
         // 다음 로그인에 이전 맵이 이어지지 않도록 기본 맵으로 초기화합니다.

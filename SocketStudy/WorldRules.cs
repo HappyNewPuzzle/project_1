@@ -93,6 +93,8 @@ public static class WorldRules
 
     public static readonly TimeSpan AuthenticationFailureIdleRetention = TimeSpan.FromMinutes(10);
 
+    public static readonly TimeSpan SessionTokenLifetime = TimeSpan.FromMinutes(30);
+
     // 위치가 학습용 월드 경계 안에 있는지 확인합니다.
     public static bool IsInsideWorld(WorldPosition position)
     {

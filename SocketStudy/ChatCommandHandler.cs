@@ -7,6 +7,7 @@ public sealed class ChatCommandHandler
         [
             "/attack", "/despawn", "/equip", "/join", "/leave", "/load",
             "/login", "/loot", "/me", "/move", "/name", "/pickup", "/register", "/rename",
+            "/resume",
             "/spawn", "/spawn-monster", "/unequip", "/use", "/warp", "/whisper"
         ],
         StringComparer.OrdinalIgnoreCase);
@@ -35,6 +36,7 @@ public sealed class ChatCommandHandler
         "/load",
         "/register <playerId> <password>",
         "/login <playerId> <password>",
+        "/resume <sessionToken>",
         "/logout",
         "/pos",
         "/map",
@@ -91,6 +93,8 @@ public sealed class ChatCommandHandler
     private const string LoginUsage = "Usage: /login <playerId> <password>";
 
     private const string RegisterUsage = "Usage: /register <playerId> <password>";
+
+    private const string ResumeUsage = "Usage: /resume <sessionToken>";
 
     // /move 명령 사용법입니다.
     private const string MoveUsage = "Usage: /move <sequence> <x> <y>";
@@ -163,6 +167,7 @@ public sealed class ChatCommandHandler
     private readonly AuthenticationAttemptLimiter authenticationAttempts;
     private readonly IAccountRepository accounts;
     private readonly PasswordHasher passwordHasher;
+    private readonly SessionTokenStore sessionTokens;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -192,7 +197,8 @@ public sealed class ChatCommandHandler
         Func<ServerLifecycleState> getServerState,
         AuthenticationAttemptLimiter authenticationAttempts,
         IAccountRepository accounts,
-        PasswordHasher passwordHasher)
+        PasswordHasher passwordHasher,
+        SessionTokenStore sessionTokens)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -236,6 +242,7 @@ public sealed class ChatCommandHandler
         this.authenticationAttempts = authenticationAttempts;
         this.accounts = accounts;
         this.passwordHasher = passwordHasher;
+        this.sessionTokens = sessionTokens;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -246,6 +253,30 @@ public sealed class ChatCommandHandler
         {
             // 명령이 아니라고 호출자에게 알려줍니다.
             return false;
+        }
+
+        if (connection.Session.IsAuthenticated &&
+            connection.Session.IsSessionTokenManaged &&
+            (connection.Session.SessionToken is null ||
+                !sessionTokens.Validate(connection.Session.SessionToken).IsValid))
+        {
+            CharacterSaveOutcome expiredSave =
+                await characterSaves.SaveIfDirtyAsync(connection.Session);
+            if (expiredSave.Status is CharacterSaveStatus.Conflict or CharacterSaveStatus.Failed)
+            {
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    "Session expired, but logout was delayed because character save failed.");
+                return true;
+            }
+
+            connection.Session.Logout();
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                "Session expired. Login again.");
+            return true;
         }
 
         if (getServerState() == ServerLifecycleState.Draining &&
@@ -598,7 +629,7 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            string sessionToken = SessionTokenGenerator.Create();
+            string sessionToken = sessionTokens.Issue(playerId);
             connection.Session.Authenticate(playerId, sessionToken);
             authenticationAttempts.RecordSuccess(accountKey!);
             await sendToClientAsync(
@@ -612,6 +643,45 @@ public sealed class ChatCommandHandler
         if (await SendUsageIfExactCommandAsync(connection, message.Text, "/login", LoginUsage))
         {
             // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        if (message.Text.StartsWith("/resume ", StringComparison.OrdinalIgnoreCase))
+        {
+            if (connection.Session.IsAuthenticated)
+            {
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    $"You are already logged in as player {connection.Session.PlayerId}.");
+                return true;
+            }
+
+            string token = message.Text["/resume ".Length..].Trim();
+            SessionTokenValidation validation = sessionTokens.Validate(token);
+            if (!validation.IsValid)
+            {
+                await sendToClientAsync(
+                    connection,
+                    MessageType.Notice,
+                    "Invalid or expired session token.");
+                return true;
+            }
+
+            connection.Session.Authenticate(validation.PlayerId, token);
+            await sendToClientAsync(
+                connection,
+                MessageType.Notice,
+                $"Session resumed for player {validation.PlayerId}.");
+            return true;
+        }
+
+        if (await SendUsageIfExactCommandAsync(
+            connection,
+            message.Text,
+            "/resume",
+            ResumeUsage))
+        {
             return true;
         }
 
@@ -643,8 +713,13 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
+            string? sessionToken = connection.Session.SessionToken;
             // 인증 정보와 학습용 월드 위치를 초기화합니다.
             connection.Session.Logout();
+            if (sessionToken is not null)
+            {
+                sessionTokens.Revoke(sessionToken);
+            }
             // 보낸 사람에게만 로그아웃 완료를 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, "Logged out.");
             // 명령을 처리했다고 호출자에게 알려줍니다.

@@ -95,6 +95,9 @@ MMO 확장을 위한 현재 플레이어 세션 상태는 `/session`으로 확�
 
 > /login 1001 correct-password
 < [notice] Logged in as player 1001. Session token: ...
+
+> /resume <sessionToken>
+< [notice] Session resumed for player 1001.
 ```
 
 플레이어의 학습용 월드 위치는 `/pos`로 확인하고 `/move <sequence> <x> <y>`로 변경합니다.
