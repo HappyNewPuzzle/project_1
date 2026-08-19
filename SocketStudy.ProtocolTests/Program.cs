@@ -23,6 +23,7 @@ RunSessionOwnershipTest();
 RunSharedCacheTest();
 RunDatabaseMigrationCatalogTest();
 RunGatewayRouterTest();
+await RunServerEventBusTestAsync();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -420,6 +421,22 @@ static void RunGatewayRouterTest()
     router.Upsert(new("stale", "127.0.0.1", 6003, 1, 0, 100, now.AddSeconds(-11)));
     if (router.Select(1)?.ServerId != "world-b" || router.Select(2) is not null)
         throw new InvalidOperationException("Gateway should select the least-loaded healthy backend for a map.");
+}
+
+static async Task RunServerEventBusTestAsync()
+{
+    IServerEventBus bus = new InMemoryServerEventBus();
+    var received = new List<Guid>();
+    using IDisposable subscription = bus.Subscribe("player.transferred", envelope =>
+    { received.Add(envelope.EventId); return Task.CompletedTask; });
+    var message = new ServerEventEnvelope(Guid.NewGuid(), "player.transferred", "world-a",
+        DateTimeOffset.UnixEpoch, "{\"playerId\":1001}");
+    await bus.PublishAsync(message);
+    if (!received.SequenceEqual([message.EventId]))
+        throw new InvalidOperationException("Message bus should deliver the event envelope to topic subscribers.");
+    subscription.Dispose();
+    await bus.PublishAsync(message);
+    if (received.Count != 1) throw new InvalidOperationException("Disposed subscription should stop delivery.");
 }
 
 static void RunServerLifecycleTest()

@@ -2722,3 +2722,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 현재는 routing domain model이며 다음 배포 단계에서 gateway process의 접속 응답으로 사용할 수 있습니다. 테스트는 stale 제외, map isolation과 least-loaded 선택을 검증합니다.
 
 다음 단계에서는 서버 사이의 도메인 event를 전달하는 message bus 계약을 추가합니다.
+
+### 다음 단계 33. 서버 간 event message bus
+
+`IServerEventBus`와 `ServerEventEnvelope`를 추가했습니다. envelope는 event ID, topic, source server, 발생 시각과 payload를 포함합니다. `InMemoryServerEventBus`는 topic subscriber snapshot을 병렬 실행하며 subscription dispose로 안전하게 해제합니다.
+
+향후 Redis Streams, RabbitMQ, Kafka adapter는 같은 계약을 구현할 수 있습니다. 실제 broker는 at-least-once 중복 전달이 가능하므로 event ID를 소비자 idempotency key로 사용해야 합니다. 테스트는 topic 전달과 unsubscribe를 검증합니다.
+
+다음 단계에서는 동시 가상 사용자와 latency percentile을 측정하는 load test harness를 추가합니다.
