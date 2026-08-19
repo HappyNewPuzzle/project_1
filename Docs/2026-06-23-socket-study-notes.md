@@ -2714,3 +2714,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 이 분리는 이후 인증 프로세스를 별도 서버로 옮길 때 command protocol이 local method 대신 RPC client를 호출하도록 교체할 지점을 만듭니다. 기존 repository 단위 테스트와 command 통합 테스트가 경계를 통과해 유지됩니다.
 
 다음 단계에서는 클라이언트 진입점과 backend 선택을 담당하는 gateway routing model을 추가합니다.
+
+### 다음 단계 32. Gateway와 다중 world routing
+
+`GatewayRouter`가 world backend heartbeat를 server ID별로 upsert하고 map ID, heartbeat freshness, capacity와 load ratio로 backend를 선택합니다. stale server와 full server는 후보에서 제외하며 동일 부하에서는 server ID로 결정적 선택을 합니다.
+
+현재는 routing domain model이며 다음 배포 단계에서 gateway process의 접속 응답으로 사용할 수 있습니다. 테스트는 stale 제외, map isolation과 least-loaded 선택을 검증합니다.
+
+다음 단계에서는 서버 사이의 도메인 event를 전달하는 message bus 계약을 추가합니다.

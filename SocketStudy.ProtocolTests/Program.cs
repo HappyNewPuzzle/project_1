@@ -22,6 +22,7 @@ RunServerHealthTest();
 RunSessionOwnershipTest();
 RunSharedCacheTest();
 RunDatabaseMigrationCatalogTest();
+RunGatewayRouterTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -408,6 +409,17 @@ static void RunDatabaseMigrationCatalogTest()
     if (!versions.SequenceEqual(versions.Order()) || versions.Distinct().Count() != versions.Length ||
         DatabaseMigrationCatalog.All.Any(item => string.IsNullOrWhiteSpace(item.PostgreSqlSql)))
         throw new InvalidOperationException("Database migrations must be ordered, unique, and provider-complete.");
+}
+
+static void RunGatewayRouterTest()
+{
+    DateTimeOffset now = DateTimeOffset.UnixEpoch;
+    var router = new GatewayRouter(TimeSpan.FromSeconds(10), () => now);
+    router.Upsert(new("world-a", "127.0.0.1", 6001, 1, 80, 100, now));
+    router.Upsert(new("world-b", "127.0.0.1", 6002, 1, 20, 100, now));
+    router.Upsert(new("stale", "127.0.0.1", 6003, 1, 0, 100, now.AddSeconds(-11)));
+    if (router.Select(1)?.ServerId != "world-b" || router.Select(2) is not null)
+        throw new InvalidOperationException("Gateway should select the least-loaded healthy backend for a map.");
 }
 
 static void RunServerLifecycleTest()
