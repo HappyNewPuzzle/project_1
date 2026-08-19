@@ -2638,3 +2638,15 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 - 테스트는 만료 경고, 정상 PFX reload, 손상된 PFX 거부, thumbprint 유지, Production 시작 거부와 overlap pin 검증을 수행합니다.
 
 다음 단계에서는 환경 변수를 흩어 읽는 방식을 strongly typed 서버 설정으로 통합하고, 시작 시 모든 설정을 한 번에 검증·출력하는 configuration 계층을 추가할 수 있습니다.
+
+### 다음 단계 23. Strongly typed 서버 configuration
+
+이번 step에서는 운영 설정을 `ServerOptions` 하나로 읽고 검증한 뒤 `ChatServer`와 TLS 계층에 주입합니다. 환경 변수를 기능 클래스가 직접 읽지 않으므로 테스트와 설정 추적이 쉬워졌습니다.
+
+지원 설정: `SOCKETSTUDY_ENVIRONMENT`, `SOCKETSTUDY_PORT`, `SOCKETSTUDY_DATABASE`, `SOCKETSTUDY_MAX_CONNECTIONS`, `SOCKETSTUDY_MAX_CONNECTIONS_PER_IP`, `SOCKETSTUDY_SHUTDOWN_SECONDS`, `SOCKETSTUDY_TLS_HANDSHAKE_SECONDS`, `SOCKETSTUDY_TLS_PFX`, `SOCKETSTUDY_TLS_PASSWORD`.
+
+시작 순서는 `명령행 포트와 환경 변수 읽기 -> 타입 변환 -> 전체 검증 -> 안전한 설정 요약 로그 -> 서버 객체 생성`입니다. 잘못된 포트, 접속 제한 관계, 0 이하 timeout, Production 인증서 누락을 한 번에 보고합니다. PFX 비밀번호는 `ToSafeSummary`에 절대 포함하지 않습니다.
+
+게임 밸런스와 월드 simulation 규칙은 운영 배포 설정과 성격이 다르므로 `WorldRules`에 유지했습니다. 테스트는 여러 설정 오류의 동시 수집과 비밀값 redaction을 검증합니다.
+
+다음 단계에서는 문자열 로그를 구조화된 event, level, property 형태로 기록하고 실행 중 로그 레벨을 제어할 수 있게 합니다.

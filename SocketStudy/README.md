@@ -43,6 +43,8 @@ dotnet run -- client
 
 외부 인증서를 사용하려면 서버에 `SOCKETSTUDY_TLS_PFX`, `SOCKETSTUDY_TLS_PASSWORD`를 설정하고 클라이언트에는 복사한 공개 인증서 경로를 `SOCKETSTUDY_TLS_CERT`로 설정합니다. 인증서 교체 기간에는 Windows에서 세미콜론으로 현재 인증서와 다음 인증서 경로를 함께 지정할 수 있습니다.
 
+서버 운영 설정은 `ServerOptions`가 환경 변수에서 읽고 시작 전에 검증합니다. `SOCKETSTUDY_PORT`, `SOCKETSTUDY_DATABASE`, `SOCKETSTUDY_MAX_CONNECTIONS`, `SOCKETSTUDY_MAX_CONNECTIONS_PER_IP`, `SOCKETSTUDY_SHUTDOWN_SECONDS`, `SOCKETSTUDY_TLS_HANDSHAKE_SECONDS`를 사용할 수 있습니다.
+
 세 번째 터미널에서 다른 클라이언트를 하나 더 실행하면 채팅 broadcast를 확인할 수 있습니다.
 
 ```powershell

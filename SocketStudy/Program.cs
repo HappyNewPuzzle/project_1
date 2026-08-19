@@ -37,10 +37,21 @@ switch (args[0].ToLowerInvariant())
             return;
         }
 
+        ServerOptions serverOptions = ServerOptions.Load(serverPort);
+        string[] configurationErrors = serverOptions.Validate();
+        if (configurationErrors.Length > 0)
+        {
+            foreach (string error in configurationErrors)
+            {
+                AppLogger.Error($"[configuration] {error}");
+            }
+            return;
+        }
+        AppLogger.Info($"[configuration] {serverOptions.ToSafeSummary()}");
         // 채팅 서버 객체를 만들고 실행합니다.
-        var server = new ChatServer();
+        var server = new ChatServer(serverOptions);
         // 사용자가 지정한 포트 또는 기본 포트로 서버를 시작합니다.
-        await server.RunAsync(serverPort, appCancellation.Token);
+        await server.RunAsync(serverOptions.Port, appCancellation.Token);
         // switch 문을 빠져나갑니다.
         break;
 

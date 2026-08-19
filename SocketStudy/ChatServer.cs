@@ -31,16 +31,13 @@ sealed class ChatServer
 
     private readonly MonsterRegistry monsters = new();
     private readonly GroundLootRegistry groundLoot = new();
-    private readonly ICharacterRepository characters = new SqliteCharacterRepository(
-        Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
+    private readonly ICharacterRepository characters;
     private readonly CharacterSaveService characterSaves;
     private readonly CharacterAutosaveLoop characterAutosaveLoop;
     private readonly ClientTaskTracker clientTasks = new();
     private readonly ConcurrentDictionary<long, byte> failedCharacterSaves = new();
     private readonly ServerLifecycle lifecycle = new();
-    private readonly ConnectionAdmissionController admission = new(
-        WorldRules.MaxConcurrentConnections,
-        WorldRules.MaxConnectionsPerIp);
+    private readonly ConnectionAdmissionController admission;
     private readonly ConnectionRateLimiter connectionRateLimiter = new(
         WorldRules.ConnectionRateLimitCapacity,
         WorldRules.ConnectionRateLimitRefillPerSecond,
@@ -51,22 +48,29 @@ sealed class ChatServer
         WorldRules.AuthenticationBackoffBaseDelay,
         WorldRules.AuthenticationBackoffMaxDelay,
         WorldRules.AuthenticationFailureIdleRetention);
-    private readonly IAccountRepository accounts = new SqliteAccountRepository(
-        Path.Combine(Environment.CurrentDirectory, "Data", "characters.db"));
+    private readonly IAccountRepository accounts;
     private readonly PasswordHasher passwordHasher = new();
     private readonly SessionTokenStore sessionTokens = new(WorldRules.SessionTokenLifetime);
-    private readonly TlsServerCertificateProvider tlsCertificates =
-        TlsCertificateManager.CreateServerCertificateProvider(
-            AppLogger.Info,
-            AppLogger.Error);
+    private readonly TlsServerCertificateProvider tlsCertificates;
+    private readonly ServerOptions options;
     private readonly TlsCertificateMonitorLoop tlsCertificateMonitor;
 
     // slash command 처리를 전담하는 handler입니다.
     private readonly ChatCommandHandler commandHandler;
 
     // 채팅 서버 객체를 초기화합니다.
-    public ChatServer()
+    public ChatServer(ServerOptions options)
     {
+        this.options = options;
+        characters = new SqliteCharacterRepository(options.DatabasePath);
+        accounts = new SqliteAccountRepository(options.DatabasePath);
+        admission = new ConnectionAdmissionController(
+            options.MaxConcurrentConnections,
+            options.MaxConnectionsPerIp);
+        tlsCertificates = TlsCertificateManager.CreateServerCertificateProvider(
+            options,
+            AppLogger.Info,
+            AppLogger.Error);
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
         characterSaves = new CharacterSaveService(characters);
@@ -232,7 +236,7 @@ sealed class ChatServer
             try
             {
                 ClientTaskWaitResult clientWait = await clientTasks.WaitForAllAsync(
-                    WorldRules.ServerShutdownTimeout);
+                    options.ShutdownTimeout);
                 if (clientWait.Completed)
                 {
                     AppLogger.Info(
@@ -297,7 +301,7 @@ sealed class ChatServer
         await using var stream = new SslStream(networkStream, leaveInnerStreamOpen: false);
         using var tlsCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        tlsCancellation.CancelAfter(WorldRules.TlsHandshakeTimeout);
+        tlsCancellation.CancelAfter(options.TlsHandshakeTimeout);
         try
         {
             await stream.AuthenticateAsServerAsync(

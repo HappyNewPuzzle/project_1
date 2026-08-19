@@ -16,27 +16,15 @@ public static class TlsCertificateManager
         Path.Combine(DefaultDirectory, "server.cer");
 
     public static TlsServerCertificateProvider CreateServerCertificateProvider(
+        ServerOptions options,
         Action<string>? logInfo = null,
         Action<string>? logError = null)
     {
-        string? configuredPfxPath =
-            Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PFX");
-        bool isProduction = string.Equals(
-            Environment.GetEnvironmentVariable("SOCKETSTUDY_ENVIRONMENT"),
-            "Production",
-            StringComparison.OrdinalIgnoreCase);
-        if (isProduction && string.IsNullOrWhiteSpace(configuredPfxPath))
-        {
-            throw new InvalidOperationException(
-                "Production requires SOCKETSTUDY_TLS_PFX and does not generate a development certificate.");
-        }
-
-        string pfxPath = configuredPfxPath ?? DefaultPfxPath;
-        string password = Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PASSWORD") ??
-            DevelopmentPassword;
+        string pfxPath = options.TlsPfxPath;
+        string password = options.TlsPassword;
         if (!File.Exists(pfxPath))
         {
-            if (isProduction || configuredPfxPath is not null)
+            if (!options.AllowDevelopmentCertificate)
             {
                 throw new FileNotFoundException("Configured TLS PFX file was not found.", pfxPath);
             }

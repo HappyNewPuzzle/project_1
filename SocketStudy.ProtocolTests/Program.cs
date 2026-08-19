@@ -14,6 +14,7 @@ await RunIncompleteBodyTestAsync();
 await RunTooLargeLengthTestAsync();
 await RunTlsProtocolRoundTripTestAsync();
 RunTlsCertificateRotationTest();
+RunServerOptionsTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -291,31 +292,23 @@ static void RunTlsCertificateRotationTest()
         }
     }
 
-    string? previousEnvironment =
-        Environment.GetEnvironmentVariable("SOCKETSTUDY_ENVIRONMENT");
-    string? previousPfx =
-        Environment.GetEnvironmentVariable("SOCKETSTUDY_TLS_PFX");
-    try
+}
+
+static void RunServerOptionsTest()
+{
+    var invalid = new ServerOptions(
+        "Production", 70_000, "data.db", 1, 2,
+        TimeSpan.Zero, TimeSpan.Zero, "missing.pfx", "secret-value", true);
+    string[] errors = invalid.Validate();
+    if (errors.Length < 5)
     {
-        Environment.SetEnvironmentVariable("SOCKETSTUDY_ENVIRONMENT", "Production");
-        Environment.SetEnvironmentVariable("SOCKETSTUDY_TLS_PFX", null);
-        try
-        {
-            using TlsServerCertificateProvider _ =
-                TlsCertificateManager.CreateServerCertificateProvider();
-            throw new InvalidOperationException("Production should not generate a development certificate.");
-        }
-        catch (InvalidOperationException ex) when (
-            ex.Message.Contains("Production requires SOCKETSTUDY_TLS_PFX"))
-        {
-        }
+        throw new InvalidOperationException("Server options should collect all configuration errors.");
     }
-    finally
+
+    string summary = invalid.ToSafeSummary();
+    if (summary.Contains("secret-value") || !summary.Contains("environment=Production"))
     {
-        Environment.SetEnvironmentVariable(
-            "SOCKETSTUDY_ENVIRONMENT",
-            previousEnvironment);
-        Environment.SetEnvironmentVariable("SOCKETSTUDY_TLS_PFX", previousPfx);
+        throw new InvalidOperationException("Configuration summary should include settings but redact secrets.");
     }
 }
 
