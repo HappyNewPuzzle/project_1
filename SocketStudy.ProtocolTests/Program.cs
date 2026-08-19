@@ -25,6 +25,7 @@ RunDatabaseMigrationCatalogTest();
 RunGatewayRouterTest();
 await RunServerEventBusTestAsync();
 await RunLoadTestRunnerTestAsync();
+RunSqliteBackupTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -452,6 +453,24 @@ static async Task RunLoadTestRunnerTestAsync()
     if (calls != 20 || result.Total != 20 || result.Succeeded != 20 || result.Failed != 0 ||
         result.P50Milliseconds > result.P95Milliseconds || result.P95Milliseconds > result.P99Milliseconds)
         throw new InvalidOperationException("Load runner should execute all virtual-user requests and ordered percentiles.");
+}
+
+static void RunSqliteBackupTest()
+{
+    string directory = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        string source = Path.Combine(directory, "source.db");
+        string backup = Path.Combine(directory, "backup.db");
+        _ = new SqliteAccountRepository(source);
+        var service = new SqliteBackupService();
+        service.CreateBackup(source, backup);
+        if (!service.Verify(backup)) throw new InvalidOperationException("SQLite backup should pass integrity check.");
+        File.WriteAllText(backup, "corrupt");
+        if (service.Verify(backup)) throw new InvalidOperationException("Corrupt backup should fail integrity check.");
+    }
+    finally { Directory.Delete(directory, true); }
 }
 
 static void RunServerLifecycleTest()

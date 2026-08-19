@@ -2738,3 +2738,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 평균만으로는 tail latency 장애를 숨길 수 있으므로 p95/p99를 함께 봅니다. cancellation은 실패로 삼키지 않고 호출자에게 전파합니다. 테스트는 4 users x 5 requests와 percentile 순서를 검증합니다.
 
 다음 단계에서는 backup, 복구, container 배포, CI 검증과 운영 runbook을 추가합니다.
+
+### 다음 단계 35. 장애 복구와 배포 자동화
+
+`SqliteBackupService`는 SQLite online backup API로 consistent snapshot을 만들고 즉시 `PRAGMA integrity_check`를 실행합니다. 단순 파일 복사는 WAL transaction과 불일치할 수 있으므로 사용하지 않습니다. 테스트는 정상 backup과 손상 파일 거부를 검증합니다.
+
+Dockerfile은 .NET 8 multi-stage restore/publish/runtime image를 사용하며 Data와 logs를 volume으로 분리합니다. compose는 restart policy와 persistent volume을 제공합니다. GitHub Actions는 Windows Schannel TLS 테스트를 포함해 restore, Release build, 전체 protocol test를 실행합니다. `Docs/operations-runbook.md`에는 deploy, backup, incident, certificate rotation 순서를 기록했습니다.
+
+여기까지 단일 학습 서버에서 시작해 보안 인증, persistence, 운영 진단, 확장 경계와 배포 복구 기반까지 구축했습니다. 다음 학습 주기는 실제 Redis/PostgreSQL/broker 인스턴스를 docker compose에 연결하고 다중 process end-to-end test를 수행하는 단계입니다.

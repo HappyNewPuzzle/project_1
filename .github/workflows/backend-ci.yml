@@ -1,0 +1,19 @@
+name: Backend CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: '**/*.csproj'
+      - run: dotnet restore SocketStudy.slnx
+      - run: dotnet build SocketStudy.slnx -c Release --no-restore
+      - run: dotnet run -c Release --no-build --project SocketStudy.ProtocolTests/SocketStudy.ProtocolTests.csproj

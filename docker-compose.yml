@@ -1,0 +1,16 @@
+services:
+  socket-study:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      SOCKETSTUDY_ENVIRONMENT: Development
+      SOCKETSTUDY_DATABASE: /app/Data/characters.db
+    volumes:
+      - socket-data:/app/Data
+      - socket-logs:/app/logs
+    restart: unless-stopped
+
+volumes:
+  socket-data:
+  socket-logs:
