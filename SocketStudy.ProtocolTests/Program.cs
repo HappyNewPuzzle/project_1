@@ -18,6 +18,7 @@ RunTlsCertificateRotationTest();
 RunServerOptionsTest();
 RunStructuredLoggerTest();
 RunServerMetricsTest();
+RunServerHealthTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -349,6 +350,25 @@ static void RunServerMetricsTest()
     metrics.ConnectionClosed();
     if (metrics.Snapshot().ActiveConnections != 0)
         throw new InvalidOperationException("Active connection gauge should return to zero.");
+}
+
+static void RunServerHealthTest()
+{
+    string directory = Path.Combine(Path.GetTempPath(), $"health-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var lifecycle = new ServerLifecycle();
+        lifecycle.MarkRunning();
+        var health = new ServerHealthService(() => lifecycle.State,
+            () => DateTimeOffset.UnixEpoch.AddHours(1), Path.Combine(directory, "data.db"),
+            () => DateTimeOffset.UnixEpoch);
+        if (!health.Check().Ready) throw new InvalidOperationException("Running server dependencies should be ready.");
+        lifecycle.BeginDraining();
+        if (health.Check().Ready || !health.Check().Live)
+            throw new InvalidOperationException("Draining server should stay live but stop being ready.");
+    }
+    finally { Directory.Delete(directory, true); }
 }
 
 static void RunServerLifecycleTest()
@@ -3837,7 +3857,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             Accounts,
             PasswordHasher,
             SessionTokens,
-            () => "Metrics: test");
+            () => "Metrics: test",
+            () => new ServerHealthReport(true, true, []));
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

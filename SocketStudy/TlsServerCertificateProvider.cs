@@ -61,6 +61,11 @@ public sealed class TlsServerCertificateProvider : IDisposable
         }
     }
 
+    public DateTimeOffset ExpiresAt
+    {
+        get { lock (gate) { return currentCertificate.NotAfter.ToUniversalTime(); } }
+    }
+
     public bool RefreshIfChanged()
     {
         var file = new FileInfo(pfxPath);

@@ -55,6 +55,7 @@ sealed class ChatServer
     private readonly TlsServerCertificateProvider tlsCertificates;
     private readonly ServerOptions options;
     private readonly ServerMetrics metrics = new();
+    private readonly ServerHealthService health;
     private readonly TlsCertificateMonitorLoop tlsCertificateMonitor;
 
     // slash command 처리를 전담하는 handler입니다.
@@ -73,6 +74,10 @@ sealed class ChatServer
             options,
             message => AppLogger.Info(message, "tls.certificate"),
             message => AppLogger.Error(message, "tls.certificate"));
+        health = new ServerHealthService(
+            () => lifecycle.State,
+            () => tlsCertificates.ExpiresAt,
+            options.DatabasePath);
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
         characterSaves = new CharacterSaveService(characters);
@@ -139,7 +144,8 @@ sealed class ChatServer
             accounts,
             passwordHasher,
             sessionTokens,
-            metrics.Format);
+            metrics.Format,
+            health.Check);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

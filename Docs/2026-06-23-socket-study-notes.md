@@ -2666,3 +2666,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 `/metrics`는 한 시점의 immutable `ServerMetricsSnapshot`을 읽어 사람이 확인할 수 있는 문자열로 반환합니다. latency는 각 요청을 보관하지 않고 elapsed tick 합계와 처리 횟수만 저장하므로 메모리 사용량이 요청 수에 따라 증가하지 않습니다. 테스트는 counter, active gauge와 10ms/20ms 처리의 15ms 평균을 검증합니다.
 
 다음 단계에서는 metrics와 서버 lifecycle, DB/TLS 상태를 조합한 liveness/readiness health model을 추가합니다.
+
+### 다음 단계 26. Liveness와 readiness
+
+`ServerHealthService`는 lifecycle, 데이터베이스 디렉터리와 TLS 인증서 만료를 조합합니다. liveness는 프로세스가 종료되지 않았는지, readiness는 새 게임 트래픽을 안전하게 받을 수 있는지를 의미합니다. Running에서만 ready이며 Draining은 live지만 ready가 아닙니다.
+
+플레이어 HP `/health`와 구분하기 위해 `/server-health`와 `/ready`가 같은 immutable report를 반환합니다. 실패 이유는 `lifecycle=Draining`, `database-directory-unavailable`, `tls-certificate-expired`처럼 노출됩니다. 테스트는 Running ready와 Draining live/not-ready 전이를 검증합니다.
+
+다음 단계에서는 진단·운영 명령을 일반 사용자에게서 분리하는 관리자 role과 authorization policy를 추가합니다.
