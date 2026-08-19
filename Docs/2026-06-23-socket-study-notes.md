@@ -2698,3 +2698,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 이 단계는 Redis 네트워크 의존성을 바로 추가하는 대신 원자적 acquire/release와 TTL semantics를 먼저 고정합니다. Redis adapter는 ownership에 `SET key owner NX PX`, release에 owner 비교 Lua script, cache에 `SET EX`를 대응시킬 수 있습니다. 테스트는 cache hit와 정확한 만료 경계를 검증합니다.
 
 다음 단계에서는 DB provider와 schema migration을 분리하고 PostgreSQL 운영 전환 경계를 추가합니다.
+
+### 다음 단계 30. PostgreSQL provider와 versioned migration
+
+`DatabaseProvider` 설정과 순서가 보장된 `DatabaseMigrationCatalog`를 추가했습니다. `SOCKETSTUDY_DATABASE_PROVIDER=PostgreSql`은 `SOCKETSTUDY_POSTGRES_CONNECTION`을 필수로 검증합니다. `PostgreSqlMigrationRunner`는 Npgsql 8.0.9로 연결하고 각 migration을 transaction 안에서 적용한 뒤 `schema_migrations`에 version을 기록합니다.
+
+현재 학습 서버의 runtime character repository 기본값은 SQLite이며 PostgreSQL 전환 전 migration을 별도 적용할 수 있습니다. migration은 SQLite/PostgreSQL SQL을 함께 가져 provider별 schema drift를 줄입니다. 테스트는 version 순서, 중복과 provider SQL 누락을 검증합니다.
+
+다음 단계에서는 인증과 월드 기능을 application service 경계로 분리합니다.

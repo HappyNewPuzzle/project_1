@@ -21,6 +21,7 @@ RunServerMetricsTest();
 RunServerHealthTest();
 RunSessionOwnershipTest();
 RunSharedCacheTest();
+RunDatabaseMigrationCatalogTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -399,6 +400,14 @@ static void RunSharedCacheTest()
     now += TimeSpan.FromSeconds(5);
     if (cache.TryGet("player:1001", out _))
         throw new InvalidOperationException("Shared cache should remove expired values.");
+}
+
+static void RunDatabaseMigrationCatalogTest()
+{
+    int[] versions = DatabaseMigrationCatalog.All.Select(item => item.Version).ToArray();
+    if (!versions.SequenceEqual(versions.Order()) || versions.Distinct().Count() != versions.Length ||
+        DatabaseMigrationCatalog.All.Any(item => string.IsNullOrWhiteSpace(item.PostgreSqlSql)))
+        throw new InvalidOperationException("Database migrations must be ordered, unique, and provider-complete.");
 }
 
 static void RunServerLifecycleTest()

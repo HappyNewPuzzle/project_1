@@ -5,13 +5,15 @@ public sealed record ServerOptions(
     string TlsPfxPath, string TlsPassword, bool AllowDevelopmentCertificate,
     AppLogLevel MinimumLogLevel, IReadOnlySet<long> AdminPlayerIds)
 {
+    public DatabaseProvider DatabaseProvider { get; init; } = DatabaseProvider.Sqlite;
+    public string? PostgreSqlConnectionString { get; init; }
     public bool IsProduction => EnvironmentName.Equals("Production", StringComparison.OrdinalIgnoreCase);
 
     public static ServerOptions Load(int commandLinePort)
     {
         string environment = Read("SOCKETSTUDY_ENVIRONMENT") ?? "Development";
         string? configuredPfx = Read("SOCKETSTUDY_TLS_PFX");
-        return new ServerOptions(
+        ServerOptions options = new ServerOptions(
             environment,
             ReadInt("SOCKETSTUDY_PORT", commandLinePort),
             Path.GetFullPath(Read("SOCKETSTUDY_DATABASE") ?? Path.Combine(Environment.CurrentDirectory, "Data", "characters.db")),
@@ -23,6 +25,14 @@ public sealed record ServerOptions(
             Read("SOCKETSTUDY_TLS_PASSWORD") ?? TlsCertificateManager.DevelopmentPassword,
             !environment.Equals("Production", StringComparison.OrdinalIgnoreCase) && configuredPfx is null,
             ReadLogLevel(), ReadAdminPlayerIds());
+        string provider = Read("SOCKETSTUDY_DATABASE_PROVIDER") ?? "Sqlite";
+        if (!Enum.TryParse(provider, true, out DatabaseProvider parsedProvider))
+            throw new InvalidOperationException("SOCKETSTUDY_DATABASE_PROVIDER must be Sqlite or PostgreSql.");
+        return options with
+        {
+            DatabaseProvider = parsedProvider,
+            PostgreSqlConnectionString = Read("SOCKETSTUDY_POSTGRES_CONNECTION")
+        };
     }
 
     public string[] Validate()
@@ -36,6 +46,8 @@ public sealed record ServerOptions(
         if (TlsHandshakeTimeout <= TimeSpan.Zero) errors.Add("TLS handshake timeout must be positive.");
         if (IsProduction && AllowDevelopmentCertificate) errors.Add("Production cannot generate a development certificate.");
         if (!AllowDevelopmentCertificate && !File.Exists(TlsPfxPath)) errors.Add($"TLS PFX file was not found: {TlsPfxPath}");
+        if (DatabaseProvider == DatabaseProvider.PostgreSql && string.IsNullOrWhiteSpace(PostgreSqlConnectionString))
+            errors.Add("PostgreSQL requires SOCKETSTUDY_POSTGRES_CONNECTION.");
         return errors.ToArray();
     }
 
