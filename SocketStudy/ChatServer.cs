@@ -55,6 +55,7 @@ sealed class ChatServer
     private readonly TlsServerCertificateProvider tlsCertificates;
     private readonly ServerOptions options;
     private readonly ServerMetrics metrics = new();
+    private readonly SessionOwnershipRegistry sessionOwnership = new();
     private readonly ServerHealthService health;
     private readonly TlsCertificateMonitorLoop tlsCertificateMonitor;
 
@@ -147,7 +148,8 @@ sealed class ChatServer
             metrics.Format,
             health.Check,
             connection => connection.Session.IsAuthenticated &&
-                options.AdminPlayerIds.Contains(connection.Session.PlayerId));
+                options.AdminPlayerIds.Contains(connection.Session.PlayerId),
+            sessionOwnership);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
@@ -399,6 +401,12 @@ sealed class ChatServer
         // 성공/실패와 관계없이 마지막 정리 작업을 수행합니다.
         finally
         {
+            if (connection.Session.IsAuthenticated)
+            {
+                sessionOwnership.Release(
+                    connection.Session.PlayerId,
+                    connection.ConnectionId);
+            }
             CharacterSaveOutcome disconnectSave = await characterSaves.SaveIfDirtyAsync(
                 connection.Session,
                 CancellationToken.None);

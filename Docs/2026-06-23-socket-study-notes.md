@@ -2682,3 +2682,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 권한 검사를 각 명령 구현에 흩뜨리지 않고 관리자 명령 집합과 하나의 policy delegate로 관리합니다. 테스트는 일반 사용자의 운영 명령 거부를 검증합니다.
 
 다음 단계에서는 한 계정의 동시 로그인과 연결별 session ownership을 원자적으로 관리합니다.
+
+### 다음 단계 28. 중복 로그인과 session ownership
+
+`SessionOwnershipRegistry`는 player ID와 connection UUID를 원자적으로 연결합니다. 비밀번호 로그인과 `/resume` 모두 소유권 획득에 실패하면 `Player is already logged in`으로 거부합니다. logout과 network disconnect는 본인 connection ID가 소유자일 때만 반납하므로 오래된 연결의 cleanup이 새 소유권을 지우지 못합니다.
+
+현재 정책은 기존 플레이어를 kick하지 않고 새 접속을 거부합니다. 테스트는 단일 소유자, 비소유자 release 무효와 정상 release 후 재획득을 검증합니다.
+
+다음 단계에서는 session과 cache를 프로세스 메모리 구현 뒤의 인터페이스로 분리해 Redis adapter를 연결할 수 있는 경계를 만듭니다.

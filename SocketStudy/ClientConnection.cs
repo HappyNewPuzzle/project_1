@@ -3,6 +3,7 @@ using System.Net.Sockets;
 // 서버가 클라이언트 한 명을 관리하기 위해 들고 있는 연결 정보입니다.
 public sealed class ClientConnection
 {
+    public Guid ConnectionId { get; } = Guid.NewGuid();
     // 클라이언트를 구분하기 위한 이름입니다.
     public string Name { get; private set; }
 

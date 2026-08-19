@@ -19,6 +19,7 @@ RunServerOptionsTest();
 RunStructuredLoggerTest();
 RunServerMetricsTest();
 RunServerHealthTest();
+RunSessionOwnershipTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -370,6 +371,21 @@ static void RunServerHealthTest()
             throw new InvalidOperationException("Draining server should stay live but stop being ready.");
     }
     finally { Directory.Delete(directory, true); }
+}
+
+static void RunSessionOwnershipTest()
+{
+    var ownership = new SessionOwnershipRegistry();
+    Guid first = Guid.NewGuid();
+    Guid second = Guid.NewGuid();
+    if (!ownership.TryAcquire(1001, first) || ownership.TryAcquire(1001, second))
+        throw new InvalidOperationException("Only one connection should own a player session.");
+    ownership.Release(1001, second);
+    if (!ownership.IsOwner(1001, first))
+        throw new InvalidOperationException("Non-owner release must not remove ownership.");
+    ownership.Release(1001, first);
+    if (!ownership.TryAcquire(1001, second))
+        throw new InvalidOperationException("Ownership should be reusable after release.");
 }
 
 static void RunServerLifecycleTest()
@@ -3806,6 +3822,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
 
     public PasswordHasher PasswordHasher { get; } = new();
     public bool IsAdministrator { get; set; } = true;
+    public SessionOwnershipRegistry SessionOwnership { get; } = new();
 
     public SessionTokenStore SessionTokens { get; }
 
@@ -3871,7 +3888,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             SessionTokens,
             () => "Metrics: test",
             () => new ServerHealthReport(true, true, []),
-            _ => IsAdministrator);
+            _ => IsAdministrator,
+            SessionOwnership);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)
