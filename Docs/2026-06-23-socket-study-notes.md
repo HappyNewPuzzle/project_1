@@ -2658,3 +2658,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 `SOCKETSTUDY_LOG_LEVEL`은 `Debug`, `Information`, `Warning`, `Error` 중 하나이며 최소 level보다 낮은 로그는 콘솔과 파일에서 모두 제외됩니다. 설정 요약에는 비밀값이 포함되지 않습니다. 테스트는 JSON field와 property의 타입 보존을 검증합니다.
 
 다음 단계에서는 접속, 명령, 저장, tick의 counter와 latency를 수집하는 서버 metrics registry를 추가합니다.
+
+### 다음 단계 25. 서버 metrics와 상태 진단
+
+`ServerMetrics`가 accepted/rejected/active connections, received messages, processed commands와 평균 command latency를 수집합니다. counter와 gauge는 `Interlocked`로 갱신해 접속 hot path에서 전역 lock을 사용하지 않습니다.
+
+`/metrics`는 한 시점의 immutable `ServerMetricsSnapshot`을 읽어 사람이 확인할 수 있는 문자열로 반환합니다. latency는 각 요청을 보관하지 않고 elapsed tick 합계와 처리 횟수만 저장하므로 메모리 사용량이 요청 수에 따라 증가하지 않습니다. 테스트는 counter, active gauge와 10ms/20ms 처리의 15ms 평균을 검증합니다.
+
+다음 단계에서는 metrics와 서버 lifecycle, DB/TLS 상태를 조합한 liveness/readiness health model을 추가합니다.

@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 // TCP 채팅 서버의 실행과 클라이언트 관리를 담당합니다.
 sealed class ChatServer
@@ -53,6 +54,7 @@ sealed class ChatServer
     private readonly SessionTokenStore sessionTokens = new(WorldRules.SessionTokenLifetime);
     private readonly TlsServerCertificateProvider tlsCertificates;
     private readonly ServerOptions options;
+    private readonly ServerMetrics metrics = new();
     private readonly TlsCertificateMonitorLoop tlsCertificateMonitor;
 
     // slash command 처리를 전담하는 handler입니다.
@@ -136,7 +138,8 @@ sealed class ChatServer
             authenticationAttempts,
             accounts,
             passwordHasher,
-            sessionTokens);
+            sessionTokens,
+            metrics.Format);
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.
@@ -185,6 +188,7 @@ sealed class ChatServer
                 ConnectionRateLimitResult rateLimit = connectionRateLimiter.Check(address);
                 if (!rateLimit.Allowed)
                 {
+                    metrics.ConnectionRejected();
                     int retryAfterSeconds = Math.Max(
                         1,
                         (int)Math.Ceiling(rateLimit.RetryAfter.TotalSeconds));
@@ -199,6 +203,7 @@ sealed class ChatServer
                 ConnectionAdmissionResult admissionResult = admission.TryAcquire(address);
                 if (!admissionResult.Accepted)
                 {
+                    metrics.ConnectionRejected();
                     string admissionMessage =
                         admissionResult.Status == ConnectionAdmissionStatus.ServerFull
                             ? "Connection rejected: server is full."
@@ -326,6 +331,7 @@ sealed class ChatServer
         var connection = new ClientConnection(clientName, client, stream);
         // 현재 클라이언트를 서버의 접속자 목록에 추가합니다.
         AddClient(connection);
+        metrics.ConnectionAccepted();
         // 새로 접속한 클라이언트 본인에게 환영 메시지와 현재 접속자 수를 알려줍니다.
         await SendToClientAsync(connection, MessageType.Notice, $"Welcome, {clientName}. Room: {connection.RoomName}. Online clients: {clients.Count}");
         // 처음 접속한 클라이언트에게 서버 안내 메시지도 함께 보냅니다.
@@ -347,10 +353,13 @@ sealed class ChatServer
                     // 메시지 읽기 반복을 종료합니다.
                     break;
                 }
+                metrics.MessageReceived();
 
                 // 서버 명령이면 채팅 broadcast 대신 명령을 처리합니다.
+                var commandStopwatch = Stopwatch.StartNew();
                 if (await commandHandler.TryHandleAsync(connection, message))
                 {
+                    metrics.CommandProcessed(commandStopwatch.Elapsed);
                     // 명령 처리가 끝났으므로 다음 메시지를 기다립니다.
                     continue;
                 }
@@ -396,6 +405,7 @@ sealed class ChatServer
             }
             // 현재 클라이언트를 서버의 접속자 목록에서 제거합니다.
             RemoveClient(connection);
+            metrics.ConnectionClosed();
             // 클라이언트 소켓을 닫아서 운영체제 리소스를 반납합니다.
             client.Close();
             // 남아 있는 클라이언트들에게 이 클라이언트가 나갔다는 서버 공지를 보냅니다.

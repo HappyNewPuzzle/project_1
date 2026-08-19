@@ -17,6 +17,7 @@ await RunTlsProtocolRoundTripTestAsync();
 RunTlsCertificateRotationTest();
 RunServerOptionsTest();
 RunStructuredLoggerTest();
+RunServerMetricsTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -331,6 +332,23 @@ static void RunStructuredLoggerTest()
     {
         throw new InvalidOperationException("Structured logger should serialize searchable fields.");
     }
+}
+
+static void RunServerMetricsTest()
+{
+    var metrics = new ServerMetrics();
+    metrics.ConnectionAccepted();
+    metrics.MessageReceived();
+    metrics.CommandProcessed(TimeSpan.FromMilliseconds(10));
+    metrics.CommandProcessed(TimeSpan.FromMilliseconds(20));
+    metrics.ConnectionRejected();
+    ServerMetricsSnapshot snapshot = metrics.Snapshot();
+    if (snapshot.ActiveConnections != 1 || snapshot.RejectedConnections != 1 ||
+        snapshot.ProcessedCommands != 2 || snapshot.AverageCommandMilliseconds != 15)
+        throw new InvalidOperationException("Server metrics should aggregate counters and latency.");
+    metrics.ConnectionClosed();
+    if (metrics.Snapshot().ActiveConnections != 0)
+        throw new InvalidOperationException("Active connection gauge should return to zero.");
 }
 
 static void RunServerLifecycleTest()
@@ -3818,7 +3836,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             AuthenticationAttempts,
             Accounts,
             PasswordHasher,
-            SessionTokens);
+            SessionTokens,
+            () => "Metrics: test");
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

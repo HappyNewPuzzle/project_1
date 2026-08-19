@@ -55,6 +55,7 @@ public sealed class ChatCommandHandler
         "/room-users",
         "/stats",
         "/motd",
+        "/metrics",
         "/version",
         "/join <room>",
         "/leave",
@@ -168,6 +169,7 @@ public sealed class ChatCommandHandler
     private readonly IAccountRepository accounts;
     private readonly PasswordHasher passwordHasher;
     private readonly SessionTokenStore sessionTokens;
+    private readonly Func<string> getMetrics;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -198,7 +200,8 @@ public sealed class ChatCommandHandler
         AuthenticationAttemptLimiter authenticationAttempts,
         IAccountRepository accounts,
         PasswordHasher passwordHasher,
-        SessionTokenStore sessionTokens)
+        SessionTokenStore sessionTokens,
+        Func<string> getMetrics)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -243,6 +246,7 @@ public sealed class ChatCommandHandler
         this.accounts = accounts;
         this.passwordHasher = passwordHasher;
         this.sessionTokens = sessionTokens;
+        this.getMetrics = getMetrics;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -332,6 +336,12 @@ public sealed class ChatCommandHandler
             // 보낸 사람에게만 명령 목록을 알려줍니다.
             await sendToClientAsync(connection, MessageType.Notice, CommandList);
             // 명령을 처리했다고 호출자에게 알려줍니다.
+            return true;
+        }
+
+        if (message.Text.Equals("/metrics", StringComparison.OrdinalIgnoreCase))
+        {
+            await sendToClientAsync(connection, MessageType.Notice, getMetrics());
             return true;
         }
 
