@@ -145,7 +145,9 @@ sealed class ChatServer
             passwordHasher,
             sessionTokens,
             metrics.Format,
-            health.Check);
+            health.Check,
+            connection => connection.Session.IsAuthenticated &&
+                options.AdminPlayerIds.Contains(connection.Session.PlayerId));
     }
 
     // TCP 서버를 실행하는 비동기 메서드입니다.

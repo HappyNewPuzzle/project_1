@@ -115,6 +115,7 @@ await RunLeaveCommandTestAsync();
 await RunInvalidRoomNameCommandTestAsync();
 await RunRoomUsersCommandTestAsync();
 await RunStatsCommandTestAsync();
+await RunAdministratorAuthorizationTestAsync();
 await RunMotdCommandTestAsync();
 await RunVersionCommandTestAsync();
 await RunMeCommandTestAsync();
@@ -303,7 +304,7 @@ static void RunServerOptionsTest()
     var invalid = new ServerOptions(
         "Production", 70_000, "data.db", 1, 2,
         TimeSpan.Zero, TimeSpan.Zero, "missing.pfx", "secret-value", true,
-        AppLogLevel.Warning);
+        AppLogLevel.Warning, new HashSet<long>());
     string[] errors = invalid.Validate();
     if (errors.Length < 5)
     {
@@ -2796,6 +2797,16 @@ static async Task RunRoomUsersCommandTestAsync()
     }
 }
 
+static async Task RunAdministratorAuthorizationTestAsync()
+{
+    await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
+    context.IsAdministrator = false;
+    await context.Handler.TryHandleAsync(context.Connection,
+        new NetworkMessage(MessageType.Command, "/metrics"));
+    if (context.SentMessages.Single().Text != "Administrator permission required.")
+        throw new InvalidOperationException("Operational commands should require administrator permission.");
+}
+
 static async Task RunStatsCommandTestAsync()
 {
     await using CommandHandlerTestContext context = await CommandHandlerTestContext.CreateAsync("alice");
@@ -3794,6 +3805,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     public InMemoryAccountRepository Accounts { get; } = new();
 
     public PasswordHasher PasswordHasher { get; } = new();
+    public bool IsAdministrator { get; set; } = true;
 
     public SessionTokenStore SessionTokens { get; }
 
@@ -3858,7 +3870,8 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             PasswordHasher,
             SessionTokens,
             () => "Metrics: test",
-            () => new ServerHealthReport(true, true, []));
+            () => new ServerHealthReport(true, true, []),
+            _ => IsAdministrator);
     }
 
     private static MovementRequestQueue CreateMovementRequestQueue(out WorldTickProcessor worldTickProcessor)

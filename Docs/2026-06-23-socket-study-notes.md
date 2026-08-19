@@ -2674,3 +2674,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 플레이어 HP `/health`와 구분하기 위해 `/server-health`와 `/ready`가 같은 immutable report를 반환합니다. 실패 이유는 `lifecycle=Draining`, `database-directory-unavailable`, `tls-certificate-expired`처럼 노출됩니다. 테스트는 Running ready와 Draining live/not-ready 전이를 검증합니다.
 
 다음 단계에서는 진단·운영 명령을 일반 사용자에게서 분리하는 관리자 role과 authorization policy를 추가합니다.
+
+### 다음 단계 27. 관리자 role과 명령 authorization
+
+`SOCKETSTUDY_ADMIN_PLAYER_IDS`에 쉼표로 구분한 player ID를 설정합니다. `/metrics`, `/server-health`, `/ready`, `/spawn-monster`는 command dispatch 초기에 관리자 여부를 검사하며 미인증 또는 일반 계정에는 동일한 `Administrator permission required` 응답을 반환합니다.
+
+권한 검사를 각 명령 구현에 흩뜨리지 않고 관리자 명령 집합과 하나의 policy delegate로 관리합니다. 테스트는 일반 사용자의 운영 명령 거부를 검증합니다.
+
+다음 단계에서는 한 계정의 동시 로그인과 연결별 session ownership을 원자적으로 관리합니다.

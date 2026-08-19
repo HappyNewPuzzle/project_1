@@ -3,6 +3,9 @@ using System.Net;
 // slash command 해석과 처리를 담당합니다.
 public sealed class ChatCommandHandler
 {
+    private static readonly HashSet<string> AdministratorCommands = new(
+        ["/metrics", "/server-health", "/ready", "/spawn-monster"],
+        StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DrainingBlockedCommands = new(
         [
             "/attack", "/despawn", "/equip", "/join", "/leave", "/load",
@@ -173,6 +176,7 @@ public sealed class ChatCommandHandler
     private readonly SessionTokenStore sessionTokens;
     private readonly Func<string> getMetrics;
     private readonly Func<ServerHealthReport> getServerHealth;
+    private readonly Func<ClientConnection, bool> isAdministrator;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -205,7 +209,8 @@ public sealed class ChatCommandHandler
         PasswordHasher passwordHasher,
         SessionTokenStore sessionTokens,
         Func<string> getMetrics,
-        Func<ServerHealthReport> getServerHealth)
+        Func<ServerHealthReport> getServerHealth,
+        Func<ClientConnection, bool> isAdministrator)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;
@@ -252,6 +257,7 @@ public sealed class ChatCommandHandler
         this.sessionTokens = sessionTokens;
         this.getMetrics = getMetrics;
         this.getServerHealth = getServerHealth;
+        this.isAdministrator = isAdministrator;
     }
 
     // 서버에서 처리해야 하는 slash command인지 확인하고 처리합니다.
@@ -262,6 +268,13 @@ public sealed class ChatCommandHandler
         {
             // 명령이 아니라고 호출자에게 알려줍니다.
             return false;
+        }
+
+        string commandName = message.Text.Split(' ', 2)[0];
+        if (AdministratorCommands.Contains(commandName) && !isAdministrator(connection))
+        {
+            await sendToClientAsync(connection, MessageType.Notice, "Administrator permission required.");
+            return true;
         }
 
         if (connection.Session.IsAuthenticated &&
