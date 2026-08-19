@@ -24,6 +24,7 @@ RunSharedCacheTest();
 RunDatabaseMigrationCatalogTest();
 RunGatewayRouterTest();
 await RunServerEventBusTestAsync();
+await RunLoadTestRunnerTestAsync();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -437,6 +438,20 @@ static async Task RunServerEventBusTestAsync()
     subscription.Dispose();
     await bus.PublishAsync(message);
     if (received.Count != 1) throw new InvalidOperationException("Disposed subscription should stop delivery.");
+}
+
+static async Task RunLoadTestRunnerTestAsync()
+{
+    var runner = new LoadTestRunner();
+    int calls = 0;
+    LoadTestResult result = await runner.RunAsync(4, 5, _ =>
+    {
+        Interlocked.Increment(ref calls);
+        return Task.CompletedTask;
+    });
+    if (calls != 20 || result.Total != 20 || result.Succeeded != 20 || result.Failed != 0 ||
+        result.P50Milliseconds > result.P95Milliseconds || result.P95Milliseconds > result.P99Milliseconds)
+        throw new InvalidOperationException("Load runner should execute all virtual-user requests and ordered percentiles.");
 }
 
 static void RunServerLifecycleTest()

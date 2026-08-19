@@ -2730,3 +2730,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 향후 Redis Streams, RabbitMQ, Kafka adapter는 같은 계약을 구현할 수 있습니다. 실제 broker는 at-least-once 중복 전달이 가능하므로 event ID를 소비자 idempotency key로 사용해야 합니다. 테스트는 topic 전달과 unsubscribe를 검증합니다.
 
 다음 단계에서는 동시 가상 사용자와 latency percentile을 측정하는 load test harness를 추가합니다.
+
+### 다음 단계 34. 부하 테스트와 latency percentile
+
+`LoadTestRunner`는 virtual user 수와 user별 request 수를 받아 operation을 동시에 실행합니다. 성공/실패, elapsed time, requests/sec, average, p50, p95, p99 latency를 반환하며 모든 개별 latency는 테스트 실행 범위에서만 보관합니다.
+
+평균만으로는 tail latency 장애를 숨길 수 있으므로 p95/p99를 함께 봅니다. cancellation은 실패로 삼키지 않고 호출자에게 전파합니다. 테스트는 4 users x 5 requests와 percentile 순서를 검증합니다.
+
+다음 단계에서는 backup, 복구, container 배포, CI 검증과 운영 runbook을 추가합니다.
