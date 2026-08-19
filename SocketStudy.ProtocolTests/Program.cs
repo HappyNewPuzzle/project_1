@@ -20,6 +20,7 @@ RunStructuredLoggerTest();
 RunServerMetricsTest();
 RunServerHealthTest();
 RunSessionOwnershipTest();
+RunSharedCacheTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -386,6 +387,18 @@ static void RunSessionOwnershipTest()
     ownership.Release(1001, first);
     if (!ownership.TryAcquire(1001, second))
         throw new InvalidOperationException("Ownership should be reusable after release.");
+}
+
+static void RunSharedCacheTest()
+{
+    DateTimeOffset now = DateTimeOffset.UnixEpoch;
+    ISharedCache cache = new InMemorySharedCache(() => now);
+    cache.Set("player:1001", "online", TimeSpan.FromSeconds(5));
+    if (!cache.TryGet("player:1001", out string? value) || value != "online")
+        throw new InvalidOperationException("Shared cache should return live values.");
+    now += TimeSpan.FromSeconds(5);
+    if (cache.TryGet("player:1001", out _))
+        throw new InvalidOperationException("Shared cache should remove expired values.");
 }
 
 static void RunServerLifecycleTest()

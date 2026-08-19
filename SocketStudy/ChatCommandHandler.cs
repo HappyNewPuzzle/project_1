@@ -177,7 +177,7 @@ public sealed class ChatCommandHandler
     private readonly Func<string> getMetrics;
     private readonly Func<ServerHealthReport> getServerHealth;
     private readonly Func<ClientConnection, bool> isAdministrator;
-    private readonly SessionOwnershipRegistry sessionOwnership;
+    private readonly ISessionOwnershipStore sessionOwnership;
 
     // 명령 처리에 필요한 서버 기능을 주입받습니다.
     public ChatCommandHandler(
@@ -212,7 +212,7 @@ public sealed class ChatCommandHandler
         Func<string> getMetrics,
         Func<ServerHealthReport> getServerHealth,
         Func<ClientConnection, bool> isAdministrator,
-        SessionOwnershipRegistry sessionOwnership)
+        ISessionOwnershipStore sessionOwnership)
     {
         // 클라이언트 개별 전송 함수를 저장합니다.
         this.sendToClientAsync = sendToClientAsync;

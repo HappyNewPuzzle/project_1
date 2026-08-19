@@ -2690,3 +2690,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 현재 정책은 기존 플레이어를 kick하지 않고 새 접속을 거부합니다. 테스트는 단일 소유자, 비소유자 release 무효와 정상 release 후 재획득을 검증합니다.
 
 다음 단계에서는 session과 cache를 프로세스 메모리 구현 뒤의 인터페이스로 분리해 Redis adapter를 연결할 수 있는 경계를 만듭니다.
+
+### 다음 단계 29. 공유 session·cache 추상화
+
+`ISessionOwnershipStore`와 `ISharedCache`를 추가했습니다. command handler는 더 이상 concrete ownership registry에 의존하지 않으며 현재 `SessionOwnershipRegistry`가 인터페이스를 구현합니다. `InMemorySharedCache`는 string key/value와 absolute TTL, lazy expiration 계약을 제공합니다.
+
+이 단계는 Redis 네트워크 의존성을 바로 추가하는 대신 원자적 acquire/release와 TTL semantics를 먼저 고정합니다. Redis adapter는 ownership에 `SET key owner NX PX`, release에 owner 비교 Lua script, cache에 `SET EX`를 대응시킬 수 있습니다. 테스트는 cache hit와 정확한 만료 경계를 검증합니다.
+
+다음 단계에서는 DB provider와 schema migration을 분리하고 PostgreSQL 운영 전환 경계를 추가합니다.

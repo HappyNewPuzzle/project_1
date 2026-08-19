@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-public sealed class SessionOwnershipRegistry
+public sealed class SessionOwnershipRegistry : ISessionOwnershipStore
 {
     private readonly ConcurrentDictionary<long, Guid> owners = new();
     public bool TryAcquire(long playerId, Guid connectionId) => owners.TryAdd(playerId, connectionId);
