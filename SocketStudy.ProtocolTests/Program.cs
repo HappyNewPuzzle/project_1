@@ -3,6 +3,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 
 await RunProtocolRoundTripTestAsync(MessageType.Chat, "alice: hello");
 await RunProtocolRoundTripTestAsync(MessageType.Notice, "Welcome.");
@@ -15,6 +16,7 @@ await RunTooLargeLengthTestAsync();
 await RunTlsProtocolRoundTripTestAsync();
 RunTlsCertificateRotationTest();
 RunServerOptionsTest();
+RunStructuredLoggerTest();
 RunMessageSizeLimitTest();
 RunNameRulesTest();
 RunServerInfoTest();
@@ -298,7 +300,8 @@ static void RunServerOptionsTest()
 {
     var invalid = new ServerOptions(
         "Production", 70_000, "data.db", 1, 2,
-        TimeSpan.Zero, TimeSpan.Zero, "missing.pfx", "secret-value", true);
+        TimeSpan.Zero, TimeSpan.Zero, "missing.pfx", "secret-value", true,
+        AppLogLevel.Warning);
     string[] errors = invalid.Validate();
     if (errors.Length < 5)
     {
@@ -309,6 +312,24 @@ static void RunServerOptionsTest()
     if (summary.Contains("secret-value") || !summary.Contains("environment=Production"))
     {
         throw new InvalidOperationException("Configuration summary should include settings but redact secrets.");
+    }
+}
+
+static void RunStructuredLoggerTest()
+{
+    string json = AppLogger.Serialize(
+        AppLogLevel.Warning,
+        "test.event",
+        "test message",
+        new Dictionary<string, object?> { ["playerId"] = 1001 },
+        DateTimeOffset.UnixEpoch);
+    using JsonDocument document = JsonDocument.Parse(json);
+    JsonElement root = document.RootElement;
+    if (root.GetProperty("level").GetString() != "Warning" ||
+        root.GetProperty("event").GetString() != "test.event" ||
+        root.GetProperty("properties").GetProperty("playerId").GetInt32() != 1001)
+    {
+        throw new InvalidOperationException("Structured logger should serialize searchable fields.");
     }
 }
 

@@ -69,8 +69,8 @@ sealed class ChatServer
             options.MaxConnectionsPerIp);
         tlsCertificates = TlsCertificateManager.CreateServerCertificateProvider(
             options,
-            AppLogger.Info,
-            AppLogger.Error);
+            message => AppLogger.Info(message, "tls.certificate"),
+            message => AppLogger.Error(message, "tls.certificate"));
         // uptime 계산에 사용할 서버 시작 시각을 저장합니다.
         DateTimeOffset serverStartedAt = DateTimeOffset.Now;
         characterSaves = new CharacterSaveService(characters);

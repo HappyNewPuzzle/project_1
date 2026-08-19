@@ -2650,3 +2650,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 게임 밸런스와 월드 simulation 규칙은 운영 배포 설정과 성격이 다르므로 `WorldRules`에 유지했습니다. 테스트는 여러 설정 오류의 동시 수집과 비밀값 redaction을 검증합니다.
 
 다음 단계에서는 문자열 로그를 구조화된 event, level, property 형태로 기록하고 실행 중 로그 레벨을 제어할 수 있게 합니다.
+
+### 다음 단계 24. 구조화 로그와 로그 레벨
+
+파일 로그를 `socket-study.jsonl` JSON Lines 형식으로 변경했습니다. 각 행은 `timestamp`, `level`, `event`, `message`, `properties`를 가지므로 수집기에서 player ID나 event 이름으로 검색할 수 있습니다. 기존 `Info/Error` 호출은 호환성을 유지하며 새 코드에서는 event와 구조화 property를 전달할 수 있습니다.
+
+`SOCKETSTUDY_LOG_LEVEL`은 `Debug`, `Information`, `Warning`, `Error` 중 하나이며 최소 level보다 낮은 로그는 콘솔과 파일에서 모두 제외됩니다. 설정 요약에는 비밀값이 포함되지 않습니다. 테스트는 JSON field와 property의 타입 보존을 검증합니다.
+
+다음 단계에서는 접속, 명령, 저장, tick의 counter와 latency를 수집하는 서버 metrics registry를 추가합니다.

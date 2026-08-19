@@ -45,6 +45,8 @@ dotnet run -- client
 
 서버 운영 설정은 `ServerOptions`가 환경 변수에서 읽고 시작 전에 검증합니다. `SOCKETSTUDY_PORT`, `SOCKETSTUDY_DATABASE`, `SOCKETSTUDY_MAX_CONNECTIONS`, `SOCKETSTUDY_MAX_CONNECTIONS_PER_IP`, `SOCKETSTUDY_SHUTDOWN_SECONDS`, `SOCKETSTUDY_TLS_HANDSHAKE_SECONDS`를 사용할 수 있습니다.
 
+`SOCKETSTUDY_LOG_LEVEL`로 최소 로그 레벨을 지정하며 파일 로그는 `logs/socket-study.jsonl`에 JSON Lines로 기록됩니다.
+
 세 번째 터미널에서 다른 클라이언트를 하나 더 실행하면 채팅 broadcast를 확인할 수 있습니다.
 
 ```powershell

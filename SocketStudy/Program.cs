@@ -38,6 +38,7 @@ switch (args[0].ToLowerInvariant())
         }
 
         ServerOptions serverOptions = ServerOptions.Load(serverPort);
+        AppLogger.MinimumLevel = serverOptions.MinimumLogLevel;
         string[] configurationErrors = serverOptions.Validate();
         if (configurationErrors.Length > 0)
         {

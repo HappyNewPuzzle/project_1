@@ -2,7 +2,8 @@ public sealed record ServerOptions(
     string EnvironmentName, int Port, string DatabasePath,
     int MaxConcurrentConnections, int MaxConnectionsPerIp,
     TimeSpan ShutdownTimeout, TimeSpan TlsHandshakeTimeout,
-    string TlsPfxPath, string TlsPassword, bool AllowDevelopmentCertificate)
+    string TlsPfxPath, string TlsPassword, bool AllowDevelopmentCertificate,
+    AppLogLevel MinimumLogLevel)
 {
     public bool IsProduction => EnvironmentName.Equals("Production", StringComparison.OrdinalIgnoreCase);
 
@@ -20,7 +21,8 @@ public sealed record ServerOptions(
             TimeSpan.FromSeconds(ReadInt("SOCKETSTUDY_TLS_HANDSHAKE_SECONDS", 10)),
             Path.GetFullPath(configuredPfx ?? TlsCertificateManager.DefaultPfxPath),
             Read("SOCKETSTUDY_TLS_PASSWORD") ?? TlsCertificateManager.DevelopmentPassword,
-            !environment.Equals("Production", StringComparison.OrdinalIgnoreCase) && configuredPfx is null);
+            !environment.Equals("Production", StringComparison.OrdinalIgnoreCase) && configuredPfx is null,
+            ReadLogLevel());
     }
 
     public string[] Validate()
@@ -51,5 +53,12 @@ public sealed record ServerOptions(
         if (value is null) return defaultValue;
         return int.TryParse(value, out int parsed) ? parsed :
             throw new InvalidOperationException($"{name} must be an integer.");
+    }
+
+    private static AppLogLevel ReadLogLevel()
+    {
+        string value = Read("SOCKETSTUDY_LOG_LEVEL") ?? "Information";
+        return Enum.TryParse(value, true, out AppLogLevel level) ? level :
+            throw new InvalidOperationException("SOCKETSTUDY_LOG_LEVEL must be Debug, Information, Warning, or Error.");
     }
 }

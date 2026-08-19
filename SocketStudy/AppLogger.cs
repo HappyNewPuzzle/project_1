@@ -1,5 +1,7 @@
-// 콘솔과 파일에 동시에 로그를 남기는 간단한 logger입니다.
-static class AppLogger
+using System.Text.Json;
+
+// 콘솔과 JSON Lines 파일에 구조화 로그를 남깁니다.
+public static class AppLogger
 {
     // 여러 작업이 동시에 파일에 쓰지 못하도록 막는 lock 객체입니다.
     private static readonly object Gate = new();
@@ -8,27 +10,38 @@ static class AppLogger
     private static readonly string LogDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
 
     // 로그 파일 경로입니다.
-    private static readonly string LogFilePath = Path.Combine(LogDirectory, "socket-study.log");
+    private static readonly string LogFilePath = Path.Combine(LogDirectory, "socket-study.jsonl");
+    public static AppLogLevel MinimumLevel { get; set; } = AppLogLevel.Information;
+
+    public static void Debug(string message, string eventName = "application") =>
+        Write(AppLogLevel.Debug, eventName, message);
 
     // 일반 정보 로그를 남깁니다.
-    public static void Info(string message)
+    public static void Info(string message, string eventName = "application")
     {
         // info 레벨로 로그를 씁니다.
-        Write("info", message);
+        Write(AppLogLevel.Information, eventName, message);
     }
 
+    public static void Warning(string message, string eventName = "application") =>
+        Write(AppLogLevel.Warning, eventName, message);
+
     // 오류 로그를 남깁니다.
-    public static void Error(string message)
+    public static void Error(string message, string eventName = "application")
     {
         // error 레벨로 로그를 씁니다.
-        Write("error", message);
+        Write(AppLogLevel.Error, eventName, message);
     }
 
     // 실제 로그 한 줄을 콘솔과 파일에 씁니다.
-    private static void Write(string level, string message)
+    public static void Write(
+        AppLogLevel level,
+        string eventName,
+        string message,
+        IReadOnlyDictionary<string, object?>? properties = null)
     {
-        // 시간, 레벨, 메시지를 한 줄로 조합합니다.
-        string line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} [{level}] {message}";
+        if (level < MinimumLevel) return;
+        string line = Serialize(level, eventName, message, properties, DateTimeOffset.UtcNow);
 
         // 콘솔에는 기존 메시지 스타일을 살리기 위해 message만 출력합니다.
         Console.WriteLine(message);
@@ -42,4 +55,18 @@ static class AppLogger
             File.AppendAllText(LogFilePath, line + Environment.NewLine);
         }
     }
+
+    public static string Serialize(
+        AppLogLevel level,
+        string eventName,
+        string message,
+        IReadOnlyDictionary<string, object?>? properties,
+        DateTimeOffset timestamp) => JsonSerializer.Serialize(new
+        {
+            timestamp,
+            level = level.ToString(),
+            @event = eventName,
+            message,
+            properties = properties ?? new Dictionary<string, object?>()
+        });
 }
