@@ -51,6 +51,7 @@ sealed class ChatServer
         WorldRules.AuthenticationFailureIdleRetention);
     private readonly IAccountRepository accounts;
     private readonly PasswordHasher passwordHasher = new();
+    private readonly AuthenticationService authentication;
     private readonly SessionTokenStore sessionTokens = new(WorldRules.SessionTokenLifetime);
     private readonly TlsServerCertificateProvider tlsCertificates;
     private readonly ServerOptions options;
@@ -68,6 +69,7 @@ sealed class ChatServer
         this.options = options;
         characters = new SqliteCharacterRepository(options.DatabasePath);
         accounts = new SqliteAccountRepository(options.DatabasePath);
+        authentication = new AuthenticationService(accounts, passwordHasher);
         admission = new ConnectionAdmissionController(
             options.MaxConcurrentConnections,
             options.MaxConnectionsPerIp);
@@ -142,8 +144,7 @@ sealed class ChatServer
             characterSaves,
             () => lifecycle.State,
             authenticationAttempts,
-            accounts,
-            passwordHasher,
+            authentication,
             sessionTokens,
             metrics.Format,
             health.Check,

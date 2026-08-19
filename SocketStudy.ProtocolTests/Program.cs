@@ -3843,6 +3843,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
     public InMemoryAccountRepository Accounts { get; } = new();
 
     public PasswordHasher PasswordHasher { get; } = new();
+    public AuthenticationService Authentication { get; }
     public bool IsAdministrator { get; set; } = true;
     public SessionOwnershipRegistry SessionOwnership { get; } = new();
 
@@ -3869,6 +3870,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             WorldRules.AuthenticationBackoffMaxDelay,
             WorldRules.AuthenticationFailureIdleRetention,
             () => CurrentTime);
+        Authentication = new AuthenticationService(Accounts, PasswordHasher);
         SessionTokens = new SessionTokenStore(
             WorldRules.SessionTokenLifetime,
             () => CurrentTime);
@@ -3905,8 +3907,7 @@ sealed class CommandHandlerTestContext : IAsyncDisposable
             characterSaves,
             () => Lifecycle.State,
             AuthenticationAttempts,
-            Accounts,
-            PasswordHasher,
+            Authentication,
             SessionTokens,
             () => "Metrics: test",
             () => new ServerHealthReport(true, true, []),

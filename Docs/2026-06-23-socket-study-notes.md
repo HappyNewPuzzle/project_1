@@ -2706,3 +2706,11 @@ SOCKETSTUDY_TLS_CERT=C:\certs\current.cer;C:\certs\next.cer
 현재 학습 서버의 runtime character repository 기본값은 SQLite이며 PostgreSQL 전환 전 migration을 별도 적용할 수 있습니다. migration은 SQLite/PostgreSQL SQL을 함께 가져 provider별 schema drift를 줄입니다. 테스트는 version 순서, 중복과 provider SQL 누락을 검증합니다.
 
 다음 단계에서는 인증과 월드 기능을 application service 경계로 분리합니다.
+
+### 다음 단계 31. 인증 service와 월드 service 경계
+
+`AuthenticationService`가 account repository와 password hasher를 감싸 registration/credential verification use case를 제공합니다. command handler는 SQLite, PBKDF2 구현을 알지 않습니다. `WorldSessionService`는 dirty save 성공 후에만 logout하는 데이터 보존 규칙을 application boundary로 묶습니다.
+
+이 분리는 이후 인증 프로세스를 별도 서버로 옮길 때 command protocol이 local method 대신 RPC client를 호출하도록 교체할 지점을 만듭니다. 기존 repository 단위 테스트와 command 통합 테스트가 경계를 통과해 유지됩니다.
+
+다음 단계에서는 클라이언트 진입점과 backend 선택을 담당하는 gateway routing model을 추가합니다.

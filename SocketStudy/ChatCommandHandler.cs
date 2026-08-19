@@ -171,8 +171,7 @@ public sealed class ChatCommandHandler
     private readonly CharacterSaveService characterSaves;
     private readonly Func<ServerLifecycleState> getServerState;
     private readonly AuthenticationAttemptLimiter authenticationAttempts;
-    private readonly IAccountRepository accounts;
-    private readonly PasswordHasher passwordHasher;
+    private readonly AuthenticationService authentication;
     private readonly SessionTokenStore sessionTokens;
     private readonly Func<string> getMetrics;
     private readonly Func<ServerHealthReport> getServerHealth;
@@ -206,8 +205,7 @@ public sealed class ChatCommandHandler
         CharacterSaveService characterSaves,
         Func<ServerLifecycleState> getServerState,
         AuthenticationAttemptLimiter authenticationAttempts,
-        IAccountRepository accounts,
-        PasswordHasher passwordHasher,
+        AuthenticationService authentication,
         SessionTokenStore sessionTokens,
         Func<string> getMetrics,
         Func<ServerHealthReport> getServerHealth,
@@ -254,8 +252,7 @@ public sealed class ChatCommandHandler
         this.characterSaves = characterSaves;
         this.getServerState = getServerState;
         this.authenticationAttempts = authenticationAttempts;
-        this.accounts = accounts;
-        this.passwordHasher = passwordHasher;
+        this.authentication = authentication;
         this.sessionTokens = sessionTokens;
         this.getMetrics = getMetrics;
         this.getServerHealth = getServerHealth;
@@ -587,8 +584,7 @@ public sealed class ChatCommandHandler
 
             try
             {
-                AccountCredential account = passwordHasher.Hash(registerPlayerId, parts[1]);
-                bool created = await accounts.CreateAsync(account);
+                bool created = await authentication.RegisterAsync(registerPlayerId, parts[1]);
                 string result = created
                     ? $"Account created for player {registerPlayerId}."
                     : "Account could not be created.";
@@ -656,10 +652,9 @@ public sealed class ChatCommandHandler
                 return true;
             }
 
-            AccountCredential? account = hasValidCredentials
-                ? await accounts.FindAsync(playerId)
-                : null;
-            if (!passwordHasher.Verify(parts.ElementAtOrDefault(1) ?? "", account))
+            bool verified = hasValidCredentials && await authentication.VerifyAsync(
+                playerId, parts.ElementAtOrDefault(1) ?? "");
+            if (!verified)
             {
                 authenticationAttempts.RecordFailure(remoteAddress, accountKey);
                 await sendToClientAsync(
